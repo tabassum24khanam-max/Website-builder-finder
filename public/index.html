@@ -1,0 +1,1647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>LeadHunter AI — Riyadh Lead Generation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ===== DESIGN SYSTEM ===== */
+  :root {
+    --bg: #0a0b0d;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #1e2430;
+    --border2: #252d3d;
+    --amber: #f0a500;
+    --amber-dim: #a87200;
+    --amber-glow: rgba(240,165,0,0.12);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,0.12);
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.12);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59,130,246,0.12);
+    --text: #e2e8f0;
+    --text-muted: #64748b;
+    --text-dim: #94a3b8;
+    --font-display: 'Syne', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --radius: 10px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-display);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(240,165,0,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(240,165,0,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ===== LAYOUT ===== */
+  .shell { display: flex; height: 100vh; position: relative; z-index: 1; }
+
+  /* ===== SIDEBAR ===== */
+  .sidebar {
+    width: 240px;
+    min-width: 240px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 0;
+    gap: 4px;
+  }
+
+  .logo {
+    padding: 0 20px 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .logo-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--amber);
+    letter-spacing: -0.5px;
+  }
+  .logo-sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 0;
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+    letter-spacing: 0.3px;
+  }
+  .nav-item:hover { color: var(--text); background: var(--surface2); }
+  .nav-item.active { color: var(--amber); border-left-color: var(--amber); background: var(--amber-glow); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .api-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+  }
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse 1.5s infinite; }
+  .dot.red { background: var(--red); }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ===== MAIN ===== */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ===== TOPBAR ===== */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .page-title {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  .topbar-actions { display: flex; gap: 10px; align-items: center; }
+
+  /* ===== BUTTONS ===== */
+  .btn {
+    padding: 8px 16px;
+    border-radius: var(--radius);
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--amber);
+    color: #0a0b0d;
+  }
+  .btn-primary:hover { background: #fbbf24; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(240,165,0,0.3); }
+  .btn-outline {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border2);
+  }
+  .btn-outline:hover { border-color: var(--text-muted); color: var(--text); }
+  .btn-danger {
+    background: var(--red-dim);
+    color: var(--red);
+    border: 1px solid rgba(239,68,68,0.2);
+  }
+  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+  .btn-green {
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid rgba(34,197,94,0.2);
+  }
+  .btn-green:hover { background: rgba(34,197,94,0.25); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+  .btn-sm { padding: 5px 10px; font-size: 11px; }
+
+  /* ===== CONTENT AREA ===== */
+  .content { flex: 1; overflow-y: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
+
+  /* ===== PAGES ===== */
+  .page { display: none; flex-direction: column; gap: 20px; }
+  .page.active { display: flex; }
+
+  /* ===== STAT CARDS ===== */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--accent, var(--border));
+  }
+  .stat-card.amber { --accent: var(--amber); }
+  .stat-card.green { --accent: var(--green); }
+  .stat-card.blue { --accent: var(--blue); }
+  .stat-card.red { --accent: var(--red); }
+  .stat-card:hover { border-color: var(--border2); }
+
+  .stat-icon { font-size: 22px; margin-bottom: 10px; }
+  .stat-value {
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* ===== SCRAPER PANEL ===== */
+  .scraper-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .panel-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-body { padding: 20px; }
+
+  .scraper-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr 120px auto;
+    gap: 12px;
+    align-items: end;
+  }
+
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .form-input, .form-select {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+  .form-input:focus, .form-select:focus { border-color: var(--amber); }
+  .form-select option { background: var(--surface2); }
+
+  /* ===== LOG CONSOLE ===== */
+  .log-console {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    height: 180px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .log-line { color: var(--text-dim); }
+  .log-line.success { color: var(--green); }
+  .log-line.error { color: var(--red); }
+  .log-line.info { color: var(--amber); }
+  .log-line.muted { color: var(--text-muted); }
+
+  /* ===== FILTERS BAR ===== */
+  .filters-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+  }
+  .filter-chip {
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-chip:hover { color: var(--text); border-color: var(--text-muted); }
+  .filter-chip.active { background: var(--amber-glow); color: var(--amber); border-color: var(--amber-dim); }
+
+  .search-input {
+    margin-left: auto;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 12px;
+    padding: 6px 12px;
+    outline: none;
+    width: 200px;
+  }
+  .search-input:focus { border-color: var(--amber); }
+
+  /* ===== LEADS TABLE ===== */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .leads-table { width: 100%; border-collapse: collapse; }
+  .leads-table th {
+    background: var(--surface2);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    padding: 11px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .leads-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    vertical-align: middle;
+    max-width: 200px;
+  }
+  .leads-table tr:last-child td { border-bottom: none; }
+  .leads-table tr:hover td { background: var(--surface2); }
+
+  .biz-name {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .biz-cat {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .score-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+  .score-9, .score-10 { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .score-7, .score-8 { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(240,165,0,0.3); }
+  .score-5, .score-6 { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
+  .score-1, .score-2, .score-3, .score-4 { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+
+  .website-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .website-tag.no { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+  .website-tag.yes { background: var(--red-dim); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+
+  .status-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+  .status-new { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.2); }
+  .status-contacted { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(240,165,0,0.2); }
+  .status-replied { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+  .status-converted { background: rgba(168,85,247,0.12); color: #a855f7; border: 1px solid rgba(168,85,247,0.2); }
+  .status-skipped { background: rgba(100,116,139,0.12); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.2); }
+
+  .actions-cell { display: flex; gap: 6px; align-items: center; }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+  }
+  .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+  .empty-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; color: var(--text-dim); }
+  .empty-sub { font-size: 12px; font-family: var(--font-mono); }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+    animation: slideUp 0.2s ease;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  .modal-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .modal-title { font-size: 17px; font-weight: 800; }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 20px;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .modal-footer {
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+  }
+
+  .detail-row { display: flex; flex-direction: column; gap: 4px; }
+  .detail-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .detail-value { font-size: 13px; font-weight: 600; color: var(--text); }
+  .detail-value a { color: var(--amber); text-decoration: none; }
+  .detail-value a:hover { text-decoration: underline; }
+
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .message-box {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 14px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+  }
+  .message-textarea {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: var(--font-display);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    width: 100%;
+    min-height: 120px;
+    resize: vertical;
+    outline: none;
+  }
+  .message-textarea:focus { border-color: var(--amber); }
+
+  .ai-reasoning {
+    background: var(--amber-glow);
+    border: 1px solid rgba(240,165,0,0.2);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--amber);
+  }
+  .review-insight {
+    background: var(--blue-dim);
+    border: 1px solid rgba(59,130,246,0.15);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #93c5fd;
+  }
+
+  .status-select {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--font-display);
+    font-size: 13px;
+    padding: 8px 12px;
+    outline: none;
+    width: 100%;
+  }
+
+  .notes-textarea {
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: var(--font-display);
+    font-size: 13px;
+    color: var(--text);
+    width: 100%;
+    min-height: 80px;
+    resize: vertical;
+    outline: none;
+  }
+
+  /* ===== PROGRESS ===== */
+  .progress-bar-wrap {
+    background: var(--border);
+    border-radius: 4px;
+    height: 4px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--amber);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+    width: 0%;
+  }
+
+  /* ===== TOAST ===== */
+  .toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: all;
+    animation: toastIn 0.3s ease;
+    box-shadow: var(--shadow);
+    max-width: 340px;
+  }
+  @keyframes toastIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .toast.success { border-left: 3px solid var(--green); }
+  .toast.error { border-left: 3px solid var(--red); }
+  .toast.info { border-left: 3px solid var(--amber); }
+
+  /* ===== STATS PAGE ===== */
+  .chart-bar-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .chart-bar-row { display: flex; align-items: center; gap: 10px; }
+  .chart-bar-label { font-size: 11px; color: var(--text-dim); width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chart-bar-track { flex: 1; background: var(--border); border-radius: 4px; height: 8px; }
+  .chart-bar-fill { height: 8px; border-radius: 4px; background: var(--amber); transition: width 0.5s; }
+  .chart-bar-count { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); width: 24px; text-align: right; }
+
+  /* ===== SPINNER ===== */
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(240,165,0,0.3);
+    border-top-color: var(--amber);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== SCRAPE CONFIG ===== */
+  .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag-chip {
+    padding: 4px 10px;
+    border-radius: 16px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tag-chip:hover { color: var(--text); }
+  .tag-chip.sel { background: var(--amber-glow); color: var(--amber); border-color: var(--amber-dim); }
+
+  /* ===== SCROLLBAR ===== */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+  /* ===== RESPONSIVE TWEAKS ===== */
+  @media (max-width: 900px) {
+    .scraper-form { grid-template-columns: 1fr 1fr; }
+    .scraper-form .btn { grid-column: span 2; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-title">⚡ LeadHunter</div>
+      <div class="logo-sub">AI Lead Generation</div>
+    </div>
+
+    <div class="nav-item active" data-page="scraper">
+      <span class="nav-icon">🔍</span> Scraper
+    </div>
+    <div class="nav-item" data-page="leads">
+      <span class="nav-icon">📋</span> All Leads
+    </div>
+    <div class="nav-item" data-page="hotleads">
+      <span class="nav-icon">🔥</span> Hot Leads
+    </div>
+    <div class="nav-item" data-page="stats">
+      <span class="nav-icon">📊</span> Analytics
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="api-status">
+        <div class="dot" id="scrape-status-dot"></div>
+        <span id="scrape-status-text">Idle</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="page-title" id="page-title">🔍 Scraper</div>
+      <div class="topbar-actions">
+        <button class="btn btn-outline" onclick="exportCSV()">⬇️ Export CSV</button>
+        <button class="btn btn-danger btn-sm" onclick="clearAllLeads()">🗑 Clear All</button>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- ==============================
+           PAGE: SCRAPER
+      ============================== -->
+      <div class="page active" id="page-scraper">
+
+        <!-- Stats row -->
+        <div class="stats-grid">
+          <div class="stat-card amber">
+            <div class="stat-icon">🏢</div>
+            <div class="stat-value" id="s-total">0</div>
+            <div class="stat-label">Total Scraped</div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-icon">🚫</div>
+            <div class="stat-value" id="s-nowebsite">0</div>
+            <div class="stat-label">No Website</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-icon">⭐</div>
+            <div class="stat-value" id="s-highscore">0</div>
+            <div class="stat-label">High Score (7+)</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-icon">📤</div>
+            <div class="stat-value" id="s-contacted">0</div>
+            <div class="stat-label">Contacted</div>
+          </div>
+        </div>
+
+        <!-- Scraper config panel -->
+        <div class="scraper-panel">
+          <div class="panel-header">
+            <div class="panel-title">⚙️ Scraper Configuration</div>
+          </div>
+          <div class="panel-body" style="display:flex;flex-direction:column;gap:16px;">
+
+            <!-- Category chips -->
+            <div class="form-group">
+              <div class="form-label">Business Category</div>
+              <div class="tag-chips" id="category-chips">
+                <div class="tag-chip sel" data-cat="restaurants">🍽 Restaurants</div>
+                <div class="tag-chip" data-cat="cafes">☕ Cafes</div>
+                <div class="tag-chip" data-cat="barbershops">✂️ Barbershops</div>
+                <div class="tag-chip" data-cat="salons">💅 Salons</div>
+                <div class="tag-chip" data-cat="clinics">🏥 Clinics</div>
+                <div class="tag-chip" data-cat="gyms">🏋️ Gyms</div>
+                <div class="tag-chip" data-cat="bakeries">🥖 Bakeries</div>
+                <div class="tag-chip" data-cat="pharmacies">💊 Pharmacies</div>
+                <div class="tag-chip" data-cat="car repair shops">🚗 Car Repair</div>
+                <div class="tag-chip" data-cat="dental clinics">🦷 Dental</div>
+                <div class="tag-chip" data-cat="hotels">🏨 Hotels</div>
+                <div class="tag-chip" data-cat="law offices">⚖️ Law Offices</div>
+              </div>
+            </div>
+
+            <!-- Form row -->
+            <div class="scraper-form">
+              <div class="form-group">
+                <div class="form-label">City</div>
+                <input class="form-input" id="inp-city" value="Riyadh" placeholder="e.g. Riyadh, Jeddah..."/>
+              </div>
+              <div class="form-group">
+                <div class="form-label">Custom Category (optional)</div>
+                <input class="form-input" id="inp-custom-cat" placeholder="e.g. perfume shops"/>
+              </div>
+              <div class="form-group">
+                <div class="form-label">Max Leads</div>
+                <select class="form-select" id="inp-limit">
+                  <option value="20">20</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <div class="form-label">&nbsp;</div>
+                <button class="btn btn-primary" id="btn-start" onclick="startScraping()">▶ Start Scraping</button>
+              </div>
+            </div>
+
+            <!-- Progress -->
+            <div id="progress-section" style="display:none;flex-direction:column;gap:8px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);" id="progress-label">Scraping...</span>
+                <button class="btn btn-danger btn-sm" onclick="stopScraping()">■ Stop</button>
+              </div>
+              <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live log -->
+        <div class="scraper-panel">
+          <div class="panel-header">
+            <div class="panel-title">🖥 Live Activity Log</div>
+            <button class="btn btn-outline btn-sm" onclick="clearLog()">Clear</button>
+          </div>
+          <div class="panel-body" style="padding:0;">
+            <div class="log-console" id="log-console">
+              <div class="log-line muted">// Ready. Configure and click "Start Scraping" above.</div>
+              <div class="log-line muted">// A Chrome browser window will open automatically.</div>
+              <div class="log-line muted">// Do not close it while scraping is active.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent leads preview -->
+        <div class="scraper-panel">
+          <div class="panel-header">
+            <div class="panel-title">🆕 Recently Scraped</div>
+            <button class="btn btn-outline btn-sm" onclick="showPage('leads')">View All →</button>
+          </div>
+          <div id="recent-leads-body">
+            <div class="empty-state" style="padding:30px 20px;">
+              <div class="empty-icon">🔍</div>
+              <div class="empty-title">No leads yet</div>
+              <div class="empty-sub">Start scraping to see results here</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end page-scraper -->
+
+      <!-- ==============================
+           PAGE: ALL LEADS
+      ============================== -->
+      <div class="page" id="page-leads">
+        <div class="filters-bar">
+          <div class="filter-chip active" data-filter="all" onclick="setFilter('all', this)">All</div>
+          <div class="filter-chip" data-filter="no-website" onclick="setFilter('no-website', this)">🚫 No Website</div>
+          <div class="filter-chip" data-filter="high-score" onclick="setFilter('high-score', this)">⭐ Score 7+</div>
+          <div class="filter-chip" data-filter="new" onclick="setFilter('new', this)">🆕 New</div>
+          <div class="filter-chip" data-filter="contacted" onclick="setFilter('contacted', this)">📤 Contacted</div>
+          <div class="filter-chip" data-filter="replied" onclick="setFilter('replied', this)">💬 Replied</div>
+          <div class="filter-chip" data-filter="converted" onclick="setFilter('converted', this)">✅ Converted</div>
+          <div class="filter-chip" data-filter="skipped" onclick="setFilter('skipped', this)">⏭ Skipped</div>
+          <input class="search-input" id="search-input" placeholder="🔎 Search leads..." oninput="renderLeads()"/>
+        </div>
+        <div class="table-wrap">
+          <table class="leads-table">
+            <thead>
+              <tr>
+                <th>Business</th>
+                <th>Score</th>
+                <th>Website</th>
+                <th>Phone</th>
+                <th>Rating</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="leads-tbody">
+              <tr><td colspan="7">
+                <div class="empty-state">
+                  <div class="empty-icon">📋</div>
+                  <div class="empty-title">No leads yet</div>
+                  <div class="empty-sub">Go to the Scraper tab to find leads</div>
+                </div>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ==============================
+           PAGE: HOT LEADS
+      ============================== -->
+      <div class="page" id="page-hotleads">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+          <div style="font-size:13px;color:var(--text-muted);">
+            Businesses with <strong style="color:var(--amber)">no website</strong> + AI score of <strong style="color:var(--amber)">7 or higher</strong>. These are your best leads.
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="leads-table">
+            <thead>
+              <tr>
+                <th>Business</th>
+                <th>Score</th>
+                <th>Phone</th>
+                <th>Rating</th>
+                <th>AI Insight</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="hot-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ==============================
+           PAGE: ANALYTICS
+      ============================== -->
+      <div class="page" id="page-stats">
+        <div class="stats-grid">
+          <div class="stat-card amber">
+            <div class="stat-icon">🏢</div>
+            <div class="stat-value" id="st-total">0</div>
+            <div class="stat-label">Total Leads</div>
+          </div>
+          <div class="stat-card green">
+            <div class="stat-icon">🚫</div>
+            <div class="stat-value" id="st-nowebsite">0</div>
+            <div class="stat-label">No Website</div>
+          </div>
+          <div class="stat-card blue">
+            <div class="stat-icon">⭐</div>
+            <div class="stat-value" id="st-hot">0</div>
+            <div class="stat-label">Hot Leads (7+)</div>
+          </div>
+          <div class="stat-card red">
+            <div class="stat-icon">✅</div>
+            <div class="stat-value" id="st-converted">0</div>
+            <div class="stat-label">Converted</div>
+          </div>
+        </div>
+
+        <div class="scraper-panel">
+          <div class="panel-header">
+            <div class="panel-title">📊 Leads by Category</div>
+          </div>
+          <div class="panel-body">
+            <div class="chart-bar-wrap" id="category-chart">
+              <div style="color:var(--text-muted);font-size:12px;">No data yet.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="scraper-panel">
+          <div class="panel-header">
+            <div class="panel-title">📈 Pipeline Overview</div>
+          </div>
+          <div class="panel-body">
+            <div class="chart-bar-wrap" id="pipeline-chart"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end content -->
+  </div><!-- end main -->
+</div><!-- end shell -->
+
+<!-- ===== LEAD DETAIL MODAL ===== -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-title">Business Name</div>
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-top:4px;" id="modal-sub"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<!-- ===== TOAST CONTAINER ===== -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ============================================================
+//  APP STATE
+// ============================================================
+let allLeads = [];
+let currentFilter = 'all';
+let activeLeadId = null;
+let eventSource = null;
+
+// ============================================================
+//  INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  setupNav();
+  setupCategoryChips();
+  connectSSE();
+  fetchLeads();
+  setInterval(fetchStats, 15000);
+});
+
+// ============================================================
+//  NAV
+// ============================================================
+function setupNav() {
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      showPage(item.dataset.page);
+    });
+  });
+}
+
+function showPage(pageId) {
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+  const nav = document.querySelector(`[data-page="${pageId}"]`);
+  const page = document.getElementById(`page-${pageId}`);
+  if (nav) nav.classList.add('active');
+  if (page) page.classList.add('active');
+
+  const titles = { scraper: '🔍 Scraper', leads: '📋 All Leads', hotleads: '🔥 Hot Leads', stats: '📊 Analytics' };
+  document.getElementById('page-title').textContent = titles[pageId] || '';
+
+  if (pageId === 'leads') renderLeads();
+  if (pageId === 'hotleads') renderHotLeads();
+  if (pageId === 'stats') renderStats();
+}
+
+// ============================================================
+//  CATEGORY CHIPS
+// ============================================================
+function setupCategoryChips() {
+  document.querySelectorAll('.tag-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('sel'));
+      chip.classList.add('sel');
+      document.getElementById('inp-custom-cat').value = '';
+    });
+  });
+}
+
+function getSelectedCategory() {
+  const custom = document.getElementById('inp-custom-cat').value.trim();
+  if (custom) return custom;
+  const sel = document.querySelector('.tag-chip.sel');
+  return sel ? sel.dataset.cat : 'restaurants';
+}
+
+// ============================================================
+//  SERVER-SENT EVENTS (real-time updates)
+// ============================================================
+function connectSSE() {
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/api/events');
+
+  eventSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+
+    if (data.type === 'status') {
+      addLog(data.message);
+    }
+    else if (data.type === 'new_lead') {
+      allLeads.unshift(data.lead);
+      updateScraperStats();
+      renderRecentLeads();
+      // If user is on those pages, re-render
+      if (document.getElementById('page-leads').classList.contains('active')) renderLeads();
+      if (document.getElementById('page-hotleads').classList.contains('active')) renderHotLeads();
+
+      const icon = data.lead.hasWebsite ? '🌐' : '🚫';
+      addLog(`${icon} New lead: ${data.lead.name} (Score: ${data.lead.aiScore}/10)`, data.lead.hasWebsite ? 'muted' : 'success');
+    }
+    else if (data.type === 'scrape_started') {
+      setScraping(true);
+      addLog(`▶ Scraper started: "${data.category}" in ${data.city} (max ${data.limit})`, 'info');
+      document.getElementById('progress-section').style.display = 'flex';
+    }
+    else if (data.type === 'scrape_done') {
+      setScraping(false);
+      addLog(`🎉 Scraping complete! ${data.totalLeads} total leads in database.`, 'success');
+      document.getElementById('progress-section').style.display = 'none';
+      fetchStats();
+    }
+    else if (data.type === 'scrape_stopped') {
+      setScraping(false);
+      addLog('■ Scraping stopped by user.', 'error');
+      document.getElementById('progress-section').style.display = 'none';
+    }
+    else if (data.type === 'scrape_error') {
+      setScraping(false);
+      addLog(`❌ Error: ${data.message}`, 'error');
+      document.getElementById('progress-section').style.display = 'none';
+    }
+    else if (data.type === 'lead_updated') {
+      const idx = allLeads.findIndex(l => l.id === data.lead.id);
+      if (idx !== -1) allLeads[idx] = data.lead;
+    }
+  };
+
+  eventSource.onerror = () => {
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+// ============================================================
+//  SCRAPING CONTROLS
+// ============================================================
+async function startScraping() {
+  const category = getSelectedCategory();
+  const city = document.getElementById('inp-city').value.trim() || 'Riyadh';
+  const limit = parseInt(document.getElementById('inp-limit').value);
+
+  document.getElementById('btn-start').disabled = true;
+
+  try {
+    const res = await fetch('/api/scrape/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, city, limit })
+    });
+    const data = await res.json();
+
+    if (!data.success && data.error) {
+      toast(data.error, 'error');
+      document.getElementById('btn-start').disabled = false;
+    }
+  } catch (err) {
+    toast('Could not start scraper. Is the server running?', 'error');
+    document.getElementById('btn-start').disabled = false;
+  }
+}
+
+async function stopScraping() {
+  await fetch('/api/scrape/stop', { method: 'POST' });
+  document.getElementById('btn-start').disabled = false;
+}
+
+function setScraping(active) {
+  const dot = document.getElementById('scrape-status-dot');
+  const txt = document.getElementById('scrape-status-text');
+  const btn = document.getElementById('btn-start');
+
+  if (active) {
+    dot.className = 'dot amber';
+    txt.textContent = 'Scraping...';
+    btn.disabled = true;
+    animateProgress();
+  } else {
+    dot.className = 'dot green';
+    txt.textContent = 'Idle';
+    btn.disabled = false;
+    document.getElementById('progress-bar').style.width = '0%';
+  }
+}
+
+function animateProgress() {
+  const bar = document.getElementById('progress-bar');
+  let w = 0;
+  const iv = setInterval(() => {
+    w += Math.random() * 3;
+    if (w > 90) w = 90;
+    bar.style.width = w + '%';
+    if (!document.querySelector('.dot.amber')) {
+      bar.style.width = '100%';
+      setTimeout(() => { bar.style.width = '0%'; }, 500);
+      clearInterval(iv);
+    }
+  }, 800);
+}
+
+// ============================================================
+//  LOG CONSOLE
+// ============================================================
+function addLog(msg, type = '') {
+  const console = document.getElementById('log-console');
+  const line = document.createElement('div');
+  line.className = `log-line ${type}`;
+  const time = new Date().toLocaleTimeString();
+  line.textContent = `[${time}] ${msg}`;
+  console.appendChild(line);
+  console.scrollTop = console.scrollHeight;
+
+  // Keep log trimmed
+  while (console.children.length > 200) console.removeChild(console.firstChild);
+}
+function clearLog() {
+  document.getElementById('log-console').innerHTML = '<div class="log-line muted">// Log cleared.</div>';
+}
+
+// ============================================================
+//  FETCH DATA
+// ============================================================
+async function fetchLeads() {
+  try {
+    const res = await fetch('/api/leads');
+    const data = await res.json();
+    allLeads = data.leads || [];
+    updateScraperStats();
+    renderRecentLeads();
+    renderLeads();
+    renderHotLeads();
+    fetchStats();
+  } catch (_) {}
+}
+
+async function fetchStats() {
+  try {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    document.getElementById('s-total').textContent = data.total || 0;
+    document.getElementById('s-nowebsite').textContent = data.noWebsite || 0;
+    document.getElementById('s-highscore').textContent = data.highScore || 0;
+    document.getElementById('s-contacted').textContent = data.contacted || 0;
+
+    document.getElementById('st-total').textContent = data.total || 0;
+    document.getElementById('st-nowebsite').textContent = data.noWebsite || 0;
+    document.getElementById('st-hot').textContent = data.highScore || 0;
+    document.getElementById('st-converted').textContent = data.converted || 0;
+
+    renderCategoryChart(data.byCategory || {});
+    renderPipelineChart(data);
+  } catch (_) {}
+}
+
+function updateScraperStats() {
+  const total = allLeads.length;
+  const noWebsite = allLeads.filter(l => !l.hasWebsite).length;
+  const highScore = allLeads.filter(l => l.aiScore >= 7).length;
+  const contacted = allLeads.filter(l => l.status === 'contacted').length;
+  document.getElementById('s-total').textContent = total;
+  document.getElementById('s-nowebsite').textContent = noWebsite;
+  document.getElementById('s-highscore').textContent = highScore;
+  document.getElementById('s-contacted').textContent = contacted;
+}
+
+// ============================================================
+//  RENDER LEADS
+// ============================================================
+function setFilter(filter, el) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  if (el) el.classList.add('active');
+  renderLeads();
+}
+
+function getFilteredLeads() {
+  const search = (document.getElementById('search-input')?.value || '').toLowerCase();
+  let filtered = [...allLeads];
+
+  if (currentFilter === 'no-website') filtered = filtered.filter(l => !l.hasWebsite);
+  else if (currentFilter === 'high-score') filtered = filtered.filter(l => l.aiScore >= 7);
+  else if (['new','contacted','replied','converted','skipped'].includes(currentFilter))
+    filtered = filtered.filter(l => l.status === currentFilter);
+
+  if (search) {
+    filtered = filtered.filter(l =>
+      (l.name||'').toLowerCase().includes(search) ||
+      (l.category||'').toLowerCase().includes(search) ||
+      (l.address||'').toLowerCase().includes(search) ||
+      (l.phone||'').toLowerCase().includes(search)
+    );
+  }
+
+  return filtered.sort((a,b) => (b.aiScore||0) - (a.aiScore||0));
+}
+
+function renderLeads() {
+  const tbody = document.getElementById('leads-tbody');
+  const leads = getFilteredLeads();
+
+  if (!leads.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <div class="empty-title">No leads match this filter</div>
+      <div class="empty-sub">Try a different filter or start scraping</div>
+    </div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = leads.map(l => `
+    <tr>
+      <td>
+        <div class="biz-name">${escHtml(l.name)}</div>
+        <div class="biz-cat">${escHtml(l.category)}</div>
+      </td>
+      <td><div class="score-badge score-${l.aiScore}">${l.aiScore}</div></td>
+      <td>
+        ${l.hasWebsite
+          ? `<span class="website-tag yes">🌐 Has site</span>`
+          : `<span class="website-tag no">🚫 No site</span>`
+        }
+      </td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${escHtml(l.phone || '—')}</td>
+      <td style="font-family:var(--font-mono);font-size:11px;">
+        ${l.rating ? `⭐ ${l.rating} <span style="color:var(--text-muted)">(${l.reviewCount})</span>` : '—'}
+      </td>
+      <td><span class="status-badge status-${l.status||'new'}">${l.status||'new'}</span></td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn btn-outline btn-sm" onclick="openModal('${l.id}')">View</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteLead('${l.id}')">✕</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderHotLeads() {
+  const tbody = document.getElementById('hot-tbody');
+  const hotLeads = allLeads
+    .filter(l => !l.hasWebsite && l.aiScore >= 7)
+    .sort((a,b) => (b.aiScore||0) - (a.aiScore||0));
+
+  if (!hotLeads.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
+      <div class="empty-icon">🔥</div>
+      <div class="empty-title">No hot leads yet</div>
+      <div class="empty-sub">Hot leads are businesses with no website and AI score ≥ 7</div>
+    </div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = hotLeads.map(l => `
+    <tr>
+      <td>
+        <div class="biz-name">${escHtml(l.name)}</div>
+        <div class="biz-cat">${escHtml(l.city)} · ${escHtml(l.category)}</div>
+      </td>
+      <td><div class="score-badge score-${l.aiScore}">${l.aiScore}</div></td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${escHtml(l.phone || '—')}</td>
+      <td style="font-family:var(--font-mono);font-size:11px;">
+        ${l.rating ? `⭐ ${l.rating} (${l.reviewCount})` : '—'}
+      </td>
+      <td style="font-size:11px;color:#93c5fd;max-width:200px;">${escHtml(l.reviewInsight || l.aiReasoning || '—')}</td>
+      <td><span class="status-badge status-${l.status||'new'}">${l.status||'new'}</span></td>
+      <td>
+        <div class="actions-cell">
+          <button class="btn btn-primary btn-sm" onclick="openModal('${l.id}')">📩 View & Copy Message</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderRecentLeads() {
+  const container = document.getElementById('recent-leads-body');
+  const recent = allLeads.slice(0, 5);
+
+  if (!recent.length) {
+    container.innerHTML = `<div class="empty-state" style="padding:30px 20px;">
+      <div class="empty-icon">🔍</div>
+      <div class="empty-title">No leads yet</div>
+      <div class="empty-sub">Start scraping to see results here</div>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = `<table class="leads-table">
+    <thead><tr>
+      <th>Business</th><th>Score</th><th>Website</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>
+    ${recent.map(l => `<tr>
+      <td>
+        <div class="biz-name">${escHtml(l.name)}</div>
+        <div class="biz-cat">${escHtml(l.category)}</div>
+      </td>
+      <td><div class="score-badge score-${l.aiScore}">${l.aiScore}</div></td>
+      <td>${l.hasWebsite ? '<span class="website-tag yes">🌐 Has site</span>' : '<span class="website-tag no">🚫 No site</span>'}</td>
+      <td><span class="status-badge status-${l.status||'new'}">${l.status||'new'}</span></td>
+      <td><button class="btn btn-outline btn-sm" onclick="openModal('${l.id}')">View</button></td>
+    </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ============================================================
+//  CHARTS
+// ============================================================
+function renderCategoryChart(byCategory) {
+  const el = document.getElementById('category-chart');
+  const entries = Object.entries(byCategory).sort((a,b) => b[1]-a[1]).slice(0, 10);
+  if (!entries.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">No data yet.</div>'; return; }
+  const max = entries[0][1];
+  el.innerHTML = entries.map(([cat, count]) => `
+    <div class="chart-bar-row">
+      <div class="chart-bar-label">${escHtml(cat)}</div>
+      <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(count/max*100).toFixed(0)}%"></div></div>
+      <div class="chart-bar-count">${count}</div>
+    </div>
+  `).join('');
+}
+
+function renderPipelineChart(data) {
+  const el = document.getElementById('pipeline-chart');
+  const stages = [
+    { label: 'Total Leads', val: data.total || 0, color: '#f0a500' },
+    { label: 'No Website', val: data.noWebsite || 0, color: '#22c55e' },
+    { label: 'High Score (7+)', val: data.highScore || 0, color: '#3b82f6' },
+    { label: 'Contacted', val: data.contacted || 0, color: '#f0a500' },
+    { label: 'Replied', val: data.replied || 0, color: '#22c55e' },
+    { label: 'Converted', val: data.converted || 0, color: '#a855f7' },
+  ];
+  const max = data.total || 1;
+  el.innerHTML = stages.map(s => `
+    <div class="chart-bar-row">
+      <div class="chart-bar-label">${s.label}</div>
+      <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(s.val/max*100).toFixed(0)}%;background:${s.color}"></div></div>
+      <div class="chart-bar-count">${s.val}</div>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+//  LEAD DETAIL MODAL
+// ============================================================
+function openModal(leadId) {
+  const lead = allLeads.find(l => l.id === leadId);
+  if (!lead) return;
+  activeLeadId = leadId;
+
+  document.getElementById('modal-title').textContent = lead.name;
+  document.getElementById('modal-sub').textContent = `${lead.category} · ${lead.city} · Scraped ${new Date(lead.scrapedAt).toLocaleDateString()}`;
+
+  const body = document.getElementById('modal-body');
+  body.innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-row">
+        <div class="detail-label">Phone</div>
+        <div class="detail-value">${lead.phone ? `<a href="tel:${lead.phone}">${escHtml(lead.phone)}</a>` : '—'}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Address</div>
+        <div class="detail-value">${escHtml(lead.address || '—')}</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Rating</div>
+        <div class="detail-value">⭐ ${lead.rating || '—'} (${lead.reviewCount || 0} reviews)</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Website</div>
+        <div class="detail-value">${lead.website ? `<a href="${lead.website}" target="_blank">${escHtml(lead.website)}</a>` : '🚫 No website'}</div>
+      </div>
+    </div>
+
+    ${lead.aiReasoning ? `<div class="ai-reasoning">🤖 <strong>AI Analysis:</strong> ${escHtml(lead.aiReasoning)}</div>` : ''}
+    ${lead.reviewInsight ? `<div class="review-insight">💬 <strong>Review Insight:</strong> ${escHtml(lead.reviewInsight)}</div>` : ''}
+
+    ${lead.outreachMessage ? `
+    <div class="detail-row">
+      <div class="detail-label" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>✉️ Outreach Message</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-outline btn-sm" onclick="copyMessage('${leadId}')">📋 Copy</button>
+          <button class="btn btn-outline btn-sm" id="regen-btn" onclick="regenMessage('${leadId}')">🔄 Regenerate</button>
+        </div>
+      </div>
+      <textarea class="message-textarea" id="msg-textarea-${leadId}">${escHtml(lead.outreachMessage)}</textarea>
+    </div>
+    ` : lead.hasWebsite ? `<div style="color:var(--text-muted);font-size:12px;padding:12px;text-align:center;">This business has a website — not a lead for website services.</div>` : ''}
+
+    <div class="detail-grid">
+      <div class="detail-row">
+        <div class="detail-label">Status</div>
+        <select class="status-select" id="modal-status" onchange="updateStatus('${leadId}', this.value)">
+          <option value="new" ${lead.status==='new'?'selected':''}>🆕 New</option>
+          <option value="contacted" ${lead.status==='contacted'?'selected':''}>📤 Contacted</option>
+          <option value="replied" ${lead.status==='replied'?'selected':''}>💬 Replied</option>
+          <option value="converted" ${lead.status==='converted'?'selected':''}>✅ Converted</option>
+          <option value="skipped" ${lead.status==='skipped'?'selected':''}>⏭ Skipped</option>
+        </select>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">AI Score</div>
+        <div class="detail-value"><span class="score-badge score-${lead.aiScore}" style="width:auto;padding:4px 12px;border-radius:8px;">${lead.aiScore}/10</span></div>
+      </div>
+    </div>
+
+    <div class="detail-row">
+      <div class="detail-label">Notes</div>
+      <textarea class="notes-textarea" id="modal-notes" placeholder="Add your notes here...">${escHtml(lead.notes || '')}</textarea>
+    </div>
+  `;
+
+  document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-outline" onclick="closeModal()">Close</button>
+    <button class="btn btn-danger btn-sm" onclick="deleteLead('${leadId}');closeModal();">Delete Lead</button>
+    <button class="btn btn-primary" onclick="saveLeadFromModal('${leadId}')">💾 Save Changes</button>
+  `;
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modal-overlay')) return;
+  document.getElementById('modal-overlay').classList.remove('open');
+  activeLeadId = null;
+}
+
+async function saveLeadFromModal(leadId) {
+  const notes = document.getElementById('modal-notes')?.value || '';
+  const status = document.getElementById('modal-status')?.value || 'new';
+  const msgEl = document.getElementById(`msg-textarea-${leadId}`);
+  const outreachMessage = msgEl ? msgEl.value : undefined;
+
+  const body = { notes, status };
+  if (outreachMessage !== undefined) body.outreachMessage = outreachMessage;
+
+  try {
+    await fetch(`/api/leads/${leadId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const lead = allLeads.find(l => l.id === leadId);
+    if (lead) { lead.notes = notes; lead.status = status; if (outreachMessage) lead.outreachMessage = outreachMessage; }
+    toast('Lead saved!', 'success');
+    closeModal();
+    renderLeads();
+    renderHotLeads();
+  } catch (_) {
+    toast('Save failed.', 'error');
+  }
+}
+
+async function updateStatus(leadId, status) {
+  try {
+    await fetch(`/api/leads/${leadId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    const lead = allLeads.find(l => l.id === leadId);
+    if (lead) lead.status = status;
+  } catch (_) {}
+}
+
+function copyMessage(leadId) {
+  const el = document.getElementById(`msg-textarea-${leadId}`);
+  if (!el) return;
+  navigator.clipboard.writeText(el.value).then(() => toast('Message copied to clipboard! 📋', 'success'));
+}
+
+async function regenMessage(leadId) {
+  const btn = document.getElementById('regen-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating...'; }
+
+  try {
+    const res = await fetch(`/api/leads/${leadId}/regenerate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
+    const data = await res.json();
+    if (data.success) {
+      const el = document.getElementById(`msg-textarea-${leadId}`);
+      if (el) el.value = data.outreachMessage;
+      const lead = allLeads.find(l => l.id === leadId);
+      if (lead) lead.outreachMessage = data.outreachMessage;
+      toast('New message generated!', 'success');
+    }
+  } catch (_) { toast('Regeneration failed.', 'error'); }
+  finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Regenerate'; }
+  }
+}
+
+// ============================================================
+//  LEAD ACTIONS
+// ============================================================
+async function deleteLead(leadId) {
+  await fetch(`/api/leads/${leadId}`, { method: 'DELETE' });
+  allLeads = allLeads.filter(l => l.id !== leadId);
+  renderLeads();
+  renderHotLeads();
+  renderRecentLeads();
+  updateScraperStats();
+  toast('Lead deleted.', 'info');
+}
+
+async function clearAllLeads() {
+  if (!confirm('Delete ALL leads? This cannot be undone.')) return;
+  await fetch('/api/leads', { method: 'DELETE' });
+  allLeads = [];
+  renderLeads();
+  renderHotLeads();
+  renderRecentLeads();
+  updateScraperStats();
+  toast('All leads cleared.', 'info');
+}
+
+function exportCSV() {
+  window.open('/api/export?noWebsiteOnly=false', '_blank');
+  toast('Exporting CSV...', 'info');
+}
+
+// ============================================================
+//  UTILS
+// ============================================================
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toast(msg, type = 'info') {
+  const icons = { success: '✅', error: '❌', info: '💡' };
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icons[type]||'💡'}</span><span>${msg}</span>`;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+</script>
+</body>
+</html>
