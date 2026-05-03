@@ -1130,6 +1130,15 @@ function connectSSE() {
       const idx = allLeads.findIndex(l => l.id === data.lead.id);
       if (idx !== -1) allLeads[idx] = data.lead;
     }
+    else if (data.type === 'lead_enriched') {
+      const idx = allLeads.findIndex(l => l.id === data.lead.id);
+      if (idx !== -1) allLeads[idx] = data.lead;
+      // Refresh the modal if it's showing this lead
+      if (activeLeadId === data.lead.id) openModal(data.lead.id);
+      renderLeads();
+      renderHotLeads();
+      toast(`Contact info found for ${data.lead.name}!`, 'success');
+    }
   };
 
   eventSource.onerror = () => {
@@ -1317,6 +1326,12 @@ function renderLeads() {
       <td>
         <div class="biz-name">${escHtml(l.name)}</div>
         <div class="biz-cat">${escHtml(l.category)}</div>
+        <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">
+          ${l.email ? `<span title="${escHtml(l.email)}" style="font-size:13px;cursor:default;">✉️</span>` : ''}
+          ${l.instagram ? `<a href="${escHtml(l.instagram)}" target="_blank" title="Instagram" style="font-size:13px;text-decoration:none;">📸</a>` : ''}
+          ${l.facebook ? `<a href="${escHtml(l.facebook)}" target="_blank" title="Facebook" style="font-size:13px;text-decoration:none;">🔵</a>` : ''}
+          ${l.linkedin ? `<a href="${escHtml(l.linkedin)}" target="_blank" title="LinkedIn" style="font-size:13px;text-decoration:none;">💼</a>` : ''}
+        </div>
       </td>
       <td><div class="score-badge score-${l.aiScore}">${l.aiScore}</div></td>
       <td>
@@ -1360,6 +1375,12 @@ function renderHotLeads() {
       <td>
         <div class="biz-name">${escHtml(l.name)}</div>
         <div class="biz-cat">${escHtml(l.city)} · ${escHtml(l.category)}</div>
+        <div style="display:flex;gap:4px;margin-top:4px;">
+          ${l.email ? `<span title="${escHtml(l.email)}" style="font-size:13px;cursor:default;">✉️</span>` : ''}
+          ${l.instagram ? `<a href="${escHtml(l.instagram)}" target="_blank" style="font-size:13px;text-decoration:none;">📸</a>` : ''}
+          ${l.facebook ? `<a href="${escHtml(l.facebook)}" target="_blank" style="font-size:13px;text-decoration:none;">🔵</a>` : ''}
+          ${l.linkedin ? `<a href="${escHtml(l.linkedin)}" target="_blank" style="font-size:13px;text-decoration:none;">💼</a>` : ''}
+        </div>
       </td>
       <td><div class="score-badge score-${l.aiScore}">${l.aiScore}</div></td>
       <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${escHtml(l.phone || '—')}</td>
@@ -1481,6 +1502,51 @@ function openModal(leadId) {
     ${lead.aiReasoning ? `<div class="ai-reasoning">🤖 <strong>AI Analysis:</strong> ${escHtml(lead.aiReasoning)}</div>` : ''}
     ${lead.reviewInsight ? `<div class="review-insight">💬 <strong>Review Insight:</strong> ${escHtml(lead.reviewInsight)}</div>` : ''}
 
+    <!-- Contact info panel -->
+    <div style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">📬 Contact Info</div>
+        <button class="btn btn-outline btn-sm" id="enrich-btn-${leadId}" onclick="enrichLead('${leadId}')">
+          ${lead.enrichedAt ? '🔄 Re-search' : '🔍 Find Contact Info'}
+        </button>
+      </div>
+      <div class="detail-grid" style="gap:10px;">
+        <div class="detail-row">
+          <div class="detail-label">Email</div>
+          <div class="detail-value" id="ci-email-${leadId}">
+            ${lead.email
+              ? `<a href="mailto:${escHtml(lead.email)}" style="color:var(--green)">${escHtml(lead.email)}</a>`
+              : `<span style="color:var(--text-muted);font-size:11px;">${lead.enrichedAt ? 'Not found' : 'Click Find Contact Info'}</span>`}
+          </div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Instagram</div>
+          <div class="detail-value" id="ci-ig-${leadId}">
+            ${lead.instagram
+              ? `<a href="${escHtml(lead.instagram)}" target="_blank" style="color:#e1306c">📸 ${escHtml(lead.instagram.replace('https://www.instagram.com/','@').replace('https://instagram.com/','@'))}</a>`
+              : `<span style="color:var(--text-muted);font-size:11px;">${lead.enrichedAt ? 'Not found' : '—'}</span>`}
+          </div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">Facebook</div>
+          <div class="detail-value" id="ci-fb-${leadId}">
+            ${lead.facebook
+              ? `<a href="${escHtml(lead.facebook)}" target="_blank" style="color:#1877f2">🔵 ${escHtml(lead.facebook.replace('https://www.facebook.com/','').replace('https://facebook.com/',''))}</a>`
+              : `<span style="color:var(--text-muted);font-size:11px;">${lead.enrichedAt ? 'Not found' : '—'}</span>`}
+          </div>
+        </div>
+        <div class="detail-row">
+          <div class="detail-label">LinkedIn</div>
+          <div class="detail-value" id="ci-li-${leadId}">
+            ${lead.linkedin
+              ? `<a href="${escHtml(lead.linkedin)}" target="_blank" style="color:#0a66c2">💼 ${escHtml(lead.linkedin.replace('https://www.linkedin.com/company/','').replace('https://linkedin.com/company/',''))}</a>`
+              : `<span style="color:var(--text-muted);font-size:11px;">${lead.enrichedAt ? 'Not found' : '—'}</span>`}
+          </div>
+        </div>
+      </div>
+      ${lead.enrichedAt ? `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);margin-top:10px;">Last searched: ${new Date(lead.enrichedAt).toLocaleString()}</div>` : ''}
+    </div>
+
     ${lead.outreachMessage ? `
     <div class="detail-row">
       <div class="detail-label" style="display:flex;align-items:center;justify-content:space-between;">
@@ -1568,6 +1634,19 @@ async function updateStatus(leadId, status) {
     const lead = allLeads.find(l => l.id === leadId);
     if (lead) lead.status = status;
   } catch (_) {}
+}
+
+async function enrichLead(leadId) {
+  const btn = document.getElementById(`enrich-btn-${leadId}`);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Searching...'; }
+  toast('Searching for contact info — this takes ~15 seconds...', 'info');
+  try {
+    await fetch(`/api/leads/${leadId}/enrich`, { method: 'POST' });
+    // Result comes back via SSE lead_enriched event which re-opens the modal
+  } catch (_) {
+    toast('Search failed. Check the activity log.', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Find Contact Info'; }
+  }
 }
 
 function copyMessage(leadId) {

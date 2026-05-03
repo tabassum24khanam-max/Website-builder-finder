@@ -8,6 +8,7 @@ require('dotenv').config();
 
 const express = require('express');
 const fs = require('fs');
+const { enrichLead } = require('./enricher');
 const path = require('path');
 const { scrapeGoogleMaps } = require('./scraper');
 const { qualifyLead, regenerateMessage } = require('./ai');
@@ -81,7 +82,7 @@ app.put('/api/leads/:id', (req, res) => {
   const lead = leads.find(l => l.id === req.params.id);
   if (!lead) return res.status(404).json({ error: 'Not found' });
 
-  const allowed = ['status', 'notes', 'outreachMessage'];
+  const allowed = ['status', 'notes', 'outreachMessage', 'email', 'instagram', 'facebook', 'linkedin'];
   allowed.forEach(field => {
     if (req.body[field] !== undefined) lead[field] = req.body[field];
   });
@@ -119,6 +120,39 @@ app.post('/api/leads/:id/regenerate', async (req, res) => {
     res.json({ success: true, outreachMessage: newMessage });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Find contact info for a lead (email, Instagram, Facebook, LinkedIn)
+app.post('/api/leads/:id/enrich', async (req, res) => {
+  const lead = leads.find(l => l.id === req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Not found' });
+
+  // Respond immediately — enrichment runs in background, result pushed via SSE
+  res.json({ success: true, message: 'Searching for contact info...' });
+
+  try {
+    broadcast({ type: 'status', message: `🔍 Finding contact info for: ${lead.name}...` });
+    const found = await enrichLead({
+      name: lead.name,
+      city: lead.city || '',
+      website: lead.website || '',
+    });
+
+    lead.email = found.email || lead.email || null;
+    lead.instagram = found.instagram || lead.instagram || null;
+    lead.facebook = found.facebook || lead.facebook || null;
+    lead.linkedin = found.linkedin || lead.linkedin || null;
+    lead.enrichedAt = new Date().toISOString();
+    lead.updatedAt = new Date().toISOString();
+
+    saveLeads();
+    broadcast({ type: 'lead_enriched', lead });
+
+    const found_count = [found.email, found.instagram, found.facebook, found.linkedin].filter(Boolean).length;
+    broadcast({ type: 'status', message: `✅ Found ${found_count} contact item(s) for ${lead.name}` });
+  } catch (err) {
+    broadcast({ type: 'status', message: `⚠️ Enrichment failed for ${lead.name}: ${err.message}` });
   }
 });
 
@@ -230,14 +264,16 @@ app.get('/api/export', (req, res) => {
   const headers = [
     'Business Name', 'Category', 'Phone', 'Address', 'Website',
     'Has Website', 'Rating', 'Review Count', 'AI Score', 'AI Reasoning',
-    'Review Insight', 'Outreach Message', 'Status', 'Scraped At'
+    'Review Insight', 'Outreach Message', 'Email', 'Instagram', 'Facebook',
+    'LinkedIn', 'Status', 'Notes', 'Scraped At'
   ];
 
   const rows = exportLeads.map(l => [
     l.name, l.category, l.phone, l.address, l.website,
     l.hasWebsite ? 'Yes' : 'No', l.rating, l.reviewCount,
     l.aiScore, l.aiReasoning, l.reviewInsight, l.outreachMessage,
-    l.status, l.scrapedAt
+    l.email, l.instagram, l.facebook, l.linkedin,
+    l.status, l.notes, l.scrapedAt
   ]);
 
   const escape = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
