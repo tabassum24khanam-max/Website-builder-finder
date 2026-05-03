@@ -1,0 +1,8 @@
+node_modules/
+.env
+leads.json
+*.csv
+.git/
+leadhunter-ai.zip
+*.log
+.DS_Store

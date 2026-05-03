@@ -1,6 +1,8 @@
 # LeadHunter — Find Local Businesses Without a Website
 
-A local web app that opens in your browser. You pick a business category and a city, click **Start**, and it:
+> **Running on Railway?** Skip to [Deploy on Railway](#deploy-on-railway) below.
+
+A web app you open in your browser. You pick a business category and a city, click **Start**, and it:
 
 1. Opens Google Maps and scrapes real businesses (name, phone, address, rating, reviews).
 2. Uses AI to score every business 1–10 as a website-services lead.
@@ -201,9 +203,108 @@ If you ever want any of these added, they require dedicated planning (paid email
 ├── server.js              # Express backend + SSE live updates
 ├── scraper.js             # Playwright Google Maps scraper
 ├── ai.js                  # OpenAI scoring + outreach generation
+├── enricher.js            # Contact info finder (email, IG, FB, LinkedIn)
 ├── public/index.html      # Single-page dashboard (HTML/CSS/JS)
 ├── package.json           # Dependencies
+├── Dockerfile             # For Railway / Docker deployment
+├── railway.toml           # Railway build + health check config
 ├── .env.example           # Copy this to .env and add your key
 ├── leads.json             # Auto-created. Your leads database.
 └── README.md              # You're reading it.
 ```
+
+---
+
+## Deploy on Railway
+
+Railway hosts the app in the cloud so you can open it from any device (phone, different laptop, anywhere) without needing a computer running at home.
+
+### What you need
+
+- A Railway account — <https://railway.app> (free to sign up, Hobby plan is $5/month and gives you everything needed)
+- Your OpenAI API key
+
+### Step 1 — Push this code to GitHub
+
+If you haven't already, push this repository to your GitHub account. Railway deploys directly from GitHub.
+
+In the terminal inside this folder:
+
+```
+git init           # skip if already a git repo
+git add .
+git commit -m "LeadHunter"
+git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+git push -u origin main
+```
+
+### Step 2 — Create a new Railway project
+
+1. Go to <https://railway.app> and log in.
+2. Click **New Project** → **Deploy from GitHub repo**.
+3. Connect your GitHub account if prompted.
+4. Select the repo you just pushed.
+5. Railway will detect the `Dockerfile` and start building. **The first build takes 3–5 minutes** (it's downloading Chromium). Subsequent builds are fast.
+
+### Step 3 — Add your environment variables
+
+While the build runs (or after):
+
+1. Click on your service in Railway.
+2. Go to the **Variables** tab.
+3. Add these variables one by one:
+
+| Variable | Value |
+|---|---|
+| `OPENAI_API_KEY` | `sk-your-real-key-here` |
+| `HEADLESS` | `true` |
+| `PORT` | `3000` |
+
+Railway automatically sets `PORT` — but adding it explicitly doesn't hurt.
+
+### Step 4 — Add a Volume so your leads are not deleted on each redeploy
+
+Without this step, every time Railway redeploys your app (after a code push or restart), your leads.json gets wiped. A Volume is persistent disk storage.
+
+1. In your Railway project, click **New** → **Volume**.
+2. Set the **Mount Path** to `/data`.
+3. Click **Add**.
+4. Go back to your service → **Variables** tab → add:
+
+| Variable | Value |
+|---|---|
+| `DATA_DIR` | `/data` |
+
+Now your `leads.json` will be stored at `/data/leads.json` which survives redeploys forever.
+
+### Step 5 — Get your public URL
+
+1. In Railway, go to your service → **Settings** tab → **Networking** section.
+2. Click **Generate Domain**.
+3. Railway gives you a URL like `https://leadhunter-production-abc123.railway.app`.
+4. Open that URL in your browser. **Your dashboard is live.**
+
+### Done
+
+Bookmark the Railway URL. Open it from your phone, your laptop, anywhere. Your leads are saved in the Volume and survive forever.
+
+---
+
+### Railway troubleshooting
+
+**Build fails with "no space left on device"**
+The Playwright Docker image is ~1.5 GB. Railway's free build has limited space. Upgrade to Hobby ($5/month) which has 100 GB.
+
+**"Application failed to respond" after deploy**
+Go to your service → **Deployments** tab → click the failed deploy → read the logs. Most common cause: `OPENAI_API_KEY` not set. Add it in the Variables tab.
+
+**Scraping hangs or crashes**
+Google Maps scraping requires real memory. Railway's Hobby plan gives 512 MB by default. Go to your service → **Settings** → increase Memory to 1 GB or 2 GB.
+
+**Leads disappeared after redeploy**
+You didn't add the Volume + set `DATA_DIR=/data`. Do Step 4 above. Previous leads are gone, but new ones will persist.
+
+**I want to run it locally too**
+Local: `npm start` (uses `.env` file).
+Railway: uses environment variables from the Railway dashboard.
+Both can run independently and have their own `leads.json`.

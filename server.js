@@ -15,7 +15,9 @@ const { qualifyLead, regenerateMessage } = require('./ai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const LEADS_FILE = path.join(__dirname, 'leads.json');
+// DATA_DIR lets you point leads.json at a Railway Volume (/data) so it
+// survives redeploys. Defaults to the app folder for local use.
+const LEADS_FILE = path.join(process.env.DATA_DIR || __dirname, 'leads.json');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
