@@ -1,19 +1,10 @@
-## Secrets
-.env
-.env.local
-
-## Generated data
-leads.json
-*.csv
-
-## Node
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-## OS / editor
+.env
+*.db
+*.db-shm
+*.db-wal
+*.csv
+*.xlsx
+*.pdf
 .DS_Store
-Thumbs.db
-.vscode/
-.idea/
+leadhunter-ai.zip

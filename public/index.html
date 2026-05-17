@@ -1,115 +1,117 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>LeadHunter AI — Riyadh Lead Generation</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LeadHunter AI v2</title>
 <style>
-  /* ===== DESIGN SYSTEM ===== */
   :root {
     --bg: #0a0b0d;
     --surface: #111318;
     --surface2: #181c24;
     --border: #1e2430;
-    --border2: #252d3d;
     --amber: #f0a500;
-    --amber-dim: #a87200;
-    --amber-glow: rgba(240,165,0,0.12);
+    --amber-dim: #b87d00;
+    --amber-glow: rgba(240,165,0,0.15);
     --green: #22c55e;
-    --green-dim: rgba(34,197,94,0.12);
     --red: #ef4444;
-    --red-dim: rgba(239,68,68,0.12);
     --blue: #3b82f6;
-    --blue-dim: rgba(59,130,246,0.12);
+    --orange: #f97316;
+    --yellow: #eab308;
+    --gray: #6b7280;
     --text: #e2e8f0;
-    --text-muted: #64748b;
-    --text-dim: #94a3b8;
-    --font-display: 'Syne', sans-serif;
-    --font-mono: 'IBM Plex Mono', monospace;
-    --radius: 10px;
-    --shadow: 0 4px 24px rgba(0,0,0,0.5);
+    --text-dim: #8b9bb4;
+    --text-muted: #4a5568;
+    --sidebar-w: 240px;
+    --radius: 8px;
+    --radius-lg: 12px;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  body {
+  html, body {
+    height: 100%;
     background: var(--bg);
     color: var(--text);
-    font-family: var(--font-display);
-    min-height: 100vh;
-    overflow-x: hidden;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow: hidden;
   }
 
-  /* Background grid */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(240,165,0,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(240,165,0,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-  }
+  /* Scrollbars */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--amber-dim); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--amber); }
 
-  /* ===== LAYOUT ===== */
-  .shell { display: flex; height: 100vh; position: relative; z-index: 1; }
+  /* Layout */
+  #app { display: flex; height: 100vh; }
 
-  /* ===== SIDEBAR ===== */
-  .sidebar {
-    width: 240px;
-    min-width: 240px;
+  /* Sidebar */
+  #sidebar {
+    width: var(--sidebar-w);
+    min-width: var(--sidebar-w);
     background: var(--surface);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    padding: 24px 0;
-    gap: 4px;
+    height: 100vh;
+    position: fixed;
+    left: 0; top: 0;
+    z-index: 100;
   }
 
-  .logo {
-    padding: 0 20px 24px;
+  .sidebar-logo {
+    padding: 24px 20px 20px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 12px;
   }
-  .logo-title {
-    font-size: 18px;
+  .sidebar-logo .logo-title {
+    font-size: 20px;
     font-weight: 800;
     color: var(--amber);
     letter-spacing: -0.5px;
   }
-  .logo-sub {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-top: 2px;
-    text-transform: uppercase;
+  .sidebar-logo .logo-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 500;
     letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    padding: 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
 
   .nav-item {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 20px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-muted);
+    padding: 10px 12px;
+    border-radius: var(--radius);
     cursor: pointer;
-    border-radius: 0;
+    color: var(--text-dim);
+    font-weight: 500;
     transition: all 0.15s;
-    border-left: 2px solid transparent;
-    letter-spacing: 0.3px;
+    border: 1px solid transparent;
+    user-select: none;
   }
-  .nav-item:hover { color: var(--text); background: var(--surface2); }
-  .nav-item.active { color: var(--amber); border-left-color: var(--amber); background: var(--amber-glow); }
-  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active {
+    background: var(--amber-glow);
+    color: var(--amber);
+    border-color: rgba(240,165,0,0.2);
+  }
+  .nav-item .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .nav-item .nav-label { font-size: 13.5px; }
 
-  .sidebar-footer {
-    margin-top: auto;
+  .sidebar-bottom {
     padding: 16px 20px;
     border-top: 1px solid var(--border);
   }
@@ -117,385 +119,537 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-muted);
+    font-size: 12px;
+    color: var(--text-dim);
   }
-  .dot {
-    width: 6px; height: 6px;
+  .status-dot {
+    width: 8px; height: 8px;
     border-radius: 50%;
-    background: var(--text-muted);
+    background: var(--gray);
+    transition: all 0.3s;
     flex-shrink: 0;
   }
-  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .dot.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse 1.5s infinite; }
-  .dot.red { background: var(--red); }
-
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.searching {
+    background: var(--amber);
+    box-shadow: 0 0 6px var(--amber);
+    animation: pulse 1s infinite;
+  }
+  .status-dot.disconnected { background: var(--red); }
   @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.85); }
   }
 
-  /* ===== MAIN ===== */
-  .main {
+  /* Main content */
+  #main {
+    margin-left: var(--sidebar-w);
     flex: 1;
+    height: 100vh;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
   }
 
-  /* ===== TOPBAR ===== */
-  .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 28px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  .page-title {
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-  }
-  .topbar-actions { display: flex; gap: 10px; align-items: center; }
-
-  /* ===== BUTTONS ===== */
-  .btn {
-    padding: 8px 16px;
-    border-radius: var(--radius);
-    font-family: var(--font-display);
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    border: none;
-    transition: all 0.15s;
-    letter-spacing: 0.5px;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-  }
-  .btn-primary {
-    background: var(--amber);
-    color: #0a0b0d;
-  }
-  .btn-primary:hover { background: #fbbf24; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(240,165,0,0.3); }
-  .btn-outline {
-    background: transparent;
-    color: var(--text-dim);
-    border: 1px solid var(--border2);
-  }
-  .btn-outline:hover { border-color: var(--text-muted); color: var(--text); }
-  .btn-danger {
-    background: var(--red-dim);
-    color: var(--red);
-    border: 1px solid rgba(239,68,68,0.2);
-  }
-  .btn-danger:hover { background: rgba(239,68,68,0.2); }
-  .btn-green {
-    background: var(--green-dim);
-    color: var(--green);
-    border: 1px solid rgba(34,197,94,0.2);
-  }
-  .btn-green:hover { background: rgba(34,197,94,0.25); }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
-  .btn-sm { padding: 5px 10px; font-size: 11px; }
-
-  /* ===== CONTENT AREA ===== */
-  .content { flex: 1; overflow-y: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
-
-  /* ===== PAGES ===== */
-  .page { display: none; flex-direction: column; gap: 20px; }
+  .page { display: none; flex-direction: column; min-height: 100%; padding: 28px 32px; gap: 24px; }
   .page.active { display: flex; }
 
-  /* ===== STAT CARDS ===== */
-  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 18px 20px;
-    position: relative;
-    overflow: hidden;
-    transition: border-color 0.2s;
-  }
-  .stat-card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: var(--accent, var(--border));
-  }
-  .stat-card.amber { --accent: var(--amber); }
-  .stat-card.green { --accent: var(--green); }
-  .stat-card.blue { --accent: var(--blue); }
-  .stat-card.red { --accent: var(--red); }
-  .stat-card:hover { border-color: var(--border2); }
-
-  .stat-icon { font-size: 22px; margin-bottom: 10px; }
-  .stat-value {
-    font-size: 32px;
-    font-weight: 800;
-    line-height: 1;
-    margin-bottom: 4px;
-    font-variant-numeric: tabular-nums;
-  }
-  .stat-label {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-
-  /* ===== SCRAPER PANEL ===== */
-  .scraper-panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .panel-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
+  .page-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    flex-shrink: 0;
+  }
+  .page-title { font-size: 22px; font-weight: 700; color: var(--text); }
+  .page-sub { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+
+  /* Cards / Panels */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+  }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
   }
   .panel-title {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* ==================== NEW SEARCH PAGE ==================== */
+
+  .search-layout { display: flex; flex-direction: column; gap: 20px; }
+
+  /* Category chips */
+  .chip-grid {
     display: flex;
-    align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
+    margin-bottom: 4px;
   }
-  .panel-body { padding: 20px; }
-
-  .scraper-form {
-    display: grid;
-    grid-template-columns: 1fr 1fr 120px auto;
-    gap: 12px;
-    align-items: end;
+  .chip {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .chip:hover { border-color: var(--amber-dim); color: var(--text); }
+  .chip.selected {
+    border-color: var(--amber);
+    background: var(--amber-glow);
+    color: var(--amber);
+    box-shadow: 0 0 10px var(--amber-glow);
   }
 
+  /* Form inputs */
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
   .form-group { display: flex; flex-direction: column; gap: 6px; }
   .form-label {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
   }
 
-  .form-input, .form-select {
-    background: var(--bg);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
+  input[type="text"], input[type="email"], input[type="url"],
+  select, textarea {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     color: var(--text);
-    font-family: var(--font-display);
-    font-size: 13px;
-    font-weight: 600;
-    padding: 9px 12px;
+    padding: 10px 12px;
+    font-size: 13.5px;
+    font-family: inherit;
     outline: none;
-    transition: border-color 0.15s;
+    transition: border-color 0.15s, box-shadow 0.15s;
     width: 100%;
   }
-  .form-input:focus, .form-select:focus { border-color: var(--amber); }
-  .form-select option { background: var(--surface2); }
-
-  /* ===== LOG CONSOLE ===== */
-  .log-console {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px;
-    height: 180px;
-    overflow-y: auto;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    line-height: 1.7;
+  input[type="text"]:focus, input[type="email"]:focus, input[type="url"]:focus,
+  select:focus, textarea:focus {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 3px var(--amber-glow);
   }
-  .log-line { color: var(--text-dim); }
-  .log-line.success { color: var(--green); }
-  .log-line.error { color: var(--red); }
-  .log-line.info { color: var(--amber); }
-  .log-line.muted { color: var(--text-muted); }
+  input::placeholder { color: var(--text-muted); }
+  select option { background: var(--surface2); }
 
-  /* ===== FILTERS BAR ===== */
-  .filters-bar {
-    display: flex;
-    gap: 10px;
+  /* Buttons */
+  .btn {
+    display: inline-flex;
     align-items: center;
-    flex-wrap: wrap;
-    background: var(--surface);
+    gap: 7px;
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    border: none;
+    cursor: pointer;
+    font-size: 13.5px;
+    font-weight: 600;
+    font-family: inherit;
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+  .btn-amber {
+    background: var(--amber);
+    color: #000;
+  }
+  .btn-amber:hover { background: #fbb524; box-shadow: 0 0 20px rgba(240,165,0,0.3); }
+  .btn-amber:disabled { background: var(--amber-dim); cursor: not-allowed; opacity: 0.5; }
+  .btn-red {
+    background: rgba(239,68,68,0.15);
+    color: var(--red);
+    border: 1px solid rgba(239,68,68,0.3);
+  }
+  .btn-red:hover { background: rgba(239,68,68,0.25); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+  .btn-blue {
+    background: rgba(59,130,246,0.15);
+    color: var(--blue);
+    border: 1px solid rgba(59,130,246,0.3);
+  }
+  .btn-blue:hover { background: rgba(59,130,246,0.25); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+  .btn-xs { padding: 4px 9px; font-size: 11px; }
+
+  .start-btn {
+    margin-top: 8px;
+    padding: 13px 28px;
+    font-size: 15px;
+    border-radius: var(--radius);
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Agent Log */
+  #agent-log-container { display: none; }
+  #agent-log-container.visible { display: flex; flex-direction: column; }
+
+  .log-console {
+    background: #070809;
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 14px 18px;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12.5px;
+    height: 220px;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
-  .filter-chip {
-    padding: 5px 12px;
-    border-radius: 20px;
-    border: 1px solid var(--border2);
-    background: transparent;
-    color: var(--text-muted);
-    font-family: var(--font-display);
-    font-size: 11px;
-    font-weight: 600;
+  .log-line { display: flex; gap: 8px; line-height: 1.6; word-break: break-word; }
+  .log-time { color: #3d4a5c; flex-shrink: 0; }
+  .log-line.info .log-msg { color: #94a3b8; }
+  .log-line.success .log-msg { color: var(--green); }
+  .log-line.warn .log-msg { color: var(--amber); }
+  .log-line.error .log-msg { color: var(--red); }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 12.5px;
+    color: var(--text-dim);
+    min-height: 38px;
+  }
+  .status-spinner {
+    width: 14px; height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--amber);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Live leads panel */
+  #live-leads-container { display: none; }
+  #live-leads-container.visible { display: flex; flex-direction: column; }
+
+  .live-leads-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  /* Lead cards */
+  .lead-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px;
     cursor: pointer;
     transition: all 0.15s;
+    animation: fadeInUp 0.3s ease;
   }
-  .filter-chip:hover { color: var(--text); border-color: var(--text-muted); }
-  .filter-chip.active { background: var(--amber-glow); color: var(--amber); border-color: var(--amber-dim); }
+  .lead-card:hover { border-color: var(--amber-dim); transform: translateY(-1px); }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .lead-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; }
+  .lead-card-name { font-weight: 600; font-size: 13.5px; color: var(--text); flex: 1; }
+  .lead-card-meta { display: flex; flex-direction: column; gap: 4px; }
+  .lead-card-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
 
-  .search-input {
-    margin-left: auto;
-    background: var(--bg);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
-    color: var(--text);
-    font-family: var(--font-display);
-    font-size: 12px;
-    padding: 6px 12px;
-    outline: none;
-    width: 200px;
-  }
-  .search-input:focus { border-color: var(--amber); }
-
-  /* ===== LEADS TABLE ===== */
-  .table-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-  .leads-table { width: 100%; border-collapse: collapse; }
-  .leads-table th {
-    background: var(--surface2);
-    color: var(--text-muted);
-    font-family: var(--font-mono);
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
-    padding: 11px 14px;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
-  }
-  .leads-table td {
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--border);
-    font-size: 12px;
-    vertical-align: middle;
-    max-width: 200px;
-  }
-  .leads-table tr:last-child td { border-bottom: none; }
-  .leads-table tr:hover td { background: var(--surface2); }
-
-  .biz-name {
-    font-weight: 700;
-    font-size: 13px;
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .biz-cat {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-
+  /* Score badge */
   .score-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    font-weight: 800;
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    font-weight: 700;
     font-size: 12px;
-    font-family: var(--font-mono);
     flex-shrink: 0;
   }
-  .score-9, .score-10 { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
-  .score-7, .score-8 { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(240,165,0,0.3); }
-  .score-5, .score-6 { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
-  .score-1, .score-2, .score-3, .score-4 { background: var(--red-dim); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+  .score-green { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+  .score-amber { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(240,165,0,0.3); }
+  .score-blue { background: rgba(59,130,246,0.15); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
+  .score-red { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
 
-  .website-tag {
+  /* Website status badges */
+  .ws-badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    padding: 3px 8px;
+    padding: 2px 8px;
     border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
     white-space: nowrap;
   }
-  .website-tag.no { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
-  .website-tag.yes { background: var(--red-dim); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+  .ws-none { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+  .ws-social_only { background: rgba(249,115,22,0.1); color: #fb923c; border: 1px solid rgba(249,115,22,0.2); }
+  .ws-linktree { background: rgba(249,115,22,0.1); color: #fb923c; border: 1px solid rgba(249,115,22,0.2); }
+  .ws-menu_only { background: rgba(234,179,8,0.1); color: #fbbf24; border: 1px solid rgba(234,179,8,0.2); }
+  .ws-outdated { background: rgba(234,179,8,0.1); color: #fbbf24; border: 1px solid rgba(234,179,8,0.2); }
+  .ws-basic { background: rgba(59,130,246,0.1); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
+  .ws-good { background: rgba(107,114,128,0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.2); }
 
-  .status-badge {
-    display: inline-block;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    padding: 3px 8px;
-    border-radius: 4px;
+  /* Status badge (lead pipeline status) */
+  .status-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600;
+  }
+  .status-new { background: rgba(59,130,246,0.1); color: #60a5fa; }
+  .status-contacted { background: rgba(240,165,0,0.1); color: var(--amber); }
+  .status-replied { background: rgba(168,85,247,0.1); color: #c084fc; }
+  .status-converted { background: rgba(34,197,94,0.1); color: var(--green); }
+  .status-skipped { background: rgba(107,114,128,0.1); color: #9ca3af; }
+
+  /* ==================== ALL LEADS PAGE ==================== */
+
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .filter-tab {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .filter-tab:hover { background: var(--surface2); color: var(--text); }
+  .filter-tab.active {
+    background: var(--amber-glow);
+    border-color: rgba(240,165,0,0.3);
+    color: var(--amber);
+  }
+
+  .search-input-wrap {
+    margin-left: auto;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .search-input-wrap input {
+    padding-left: 32px;
+    width: 220px;
+    background: var(--surface2);
+  }
+  .search-input-wrap .search-icon {
+    position: absolute;
+    left: 10px;
+    color: var(--text-muted);
+    font-size: 13px;
+    pointer-events: none;
+  }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
   }
-  .status-new { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(59,130,246,0.2); }
-  .status-contacted { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(240,165,0,0.2); }
-  .status-replied { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
-  .status-converted { background: rgba(168,85,247,0.12); color: #a855f7; border: 1px solid rgba(168,85,247,0.2); }
-  .status-skipped { background: rgba(100,116,139,0.12); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.2); }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    cursor: pointer;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  td {
+    padding: 11px 14px;
+    font-size: 13px;
+    color: var(--text);
+    vertical-align: middle;
+  }
+  .td-name { font-weight: 600; color: var(--text); max-width: 160px; }
+  .td-name small { display: block; font-size: 11px; color: var(--text-dim); font-weight: 400; }
+  .td-dim { color: var(--text-dim); }
+  .td-actions { display: flex; gap: 6px; align-items: center; }
 
-  .actions-cell { display: flex; gap: 6px; align-items: center; }
+  /* Marketing bar */
+  .mkt-bar-wrap { display: flex; align-items: center; gap: 6px; }
+  .mkt-bar { height: 4px; border-radius: 2px; flex: 1; background: var(--border); overflow: hidden; max-width: 60px; }
+  .mkt-bar-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
 
+  /* Empty state */
   .empty-state {
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     padding: 60px 20px;
-    color: var(--text-muted);
+    color: var(--text-dim);
+    gap: 12px;
   }
-  .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
-  .empty-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; color: var(--text-dim); }
-  .empty-sub { font-size: 12px; font-family: var(--font-mono); }
+  .empty-icon { font-size: 42px; opacity: 0.4; }
+  .empty-title { font-size: 16px; font-weight: 600; color: var(--text-muted); }
+  .empty-sub { font-size: 13px; color: var(--text-muted); text-align: center; }
 
-  /* ===== MODAL ===== */
+  /* ==================== HISTORY PAGE ==================== */
+
+  .history-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+  }
+
+  .history-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+  .history-card:hover { border-color: var(--amber-dim); transform: translateY(-1px); }
+  .history-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .history-card-title { font-weight: 700; font-size: 15px; color: var(--text); }
+  .history-card-date { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+  .history-card-meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .history-meta-item { display: flex; flex-direction: column; gap: 2px; }
+  .history-meta-label { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .history-meta-value { font-size: 14px; font-weight: 600; color: var(--text); }
+
+  /* Search run status */
+  .run-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+  }
+  .run-done { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.2); }
+  .run-running { background: var(--amber-glow); color: var(--amber); border: 1px solid rgba(240,165,0,0.2); }
+  .run-error { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+  .run-stopped { background: rgba(107,114,128,0.1); color: #9ca3af; border: 1px solid rgba(107,114,128,0.2); }
+
+  /* ==================== ANALYTICS PAGE ==================== */
+
+  .stat-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 18px 16px;
+  }
+  .stat-card-label { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .stat-card-value { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1; }
+  .stat-card-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 4px; }
+
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .chart-container { position: relative; }
+  .chart-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
+
+  .bar-chart { display: flex; flex-direction: column; gap: 10px; }
+  .bar-row { display: flex; align-items: center; gap: 12px; }
+  .bar-label { font-size: 12px; color: var(--text-dim); width: 100px; flex-shrink: 0; text-align: right; }
+  .bar-track { flex: 1; height: 20px; background: var(--surface2); border-radius: 4px; overflow: hidden; position: relative; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; }
+  .bar-val { font-size: 11px; font-weight: 600; color: rgba(0,0,0,0.7); }
+  .bar-fill-amber { background: var(--amber); }
+  .bar-fill-blue { background: var(--blue); }
+  .bar-fill-green { background: var(--green); }
+  .bar-fill-red { background: var(--red); }
+  .bar-fill-orange { background: var(--orange); }
+  .bar-fill-purple { background: #a855f7; }
+
+  /* Funnel */
+  .funnel { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .funnel-step {
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #000;
+    transition: width 0.6s ease;
+    height: 36px;
+    position: relative;
+  }
+  .funnel-step-label {
+    position: absolute; right: -110px; font-size: 12px;
+    color: var(--text-dim); white-space: nowrap; font-weight: 400;
+  }
+
+  /* ==================== MODAL ==================== */
+
   .modal-overlay {
+    display: none;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.75);
-    z-index: 100;
-    display: none;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
     align-items: center;
     justify-content: center;
     padding: 20px;
     backdrop-filter: blur(4px);
   }
   .modal-overlay.open { display: flex; }
+
   .modal {
     background: var(--surface);
-    border: 1px solid var(--border2);
-    border-radius: 14px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
     width: 100%;
-    max-width: 640px;
+    max-width: 700px;
     max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: var(--shadow);
-    animation: slideUp 0.2s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: modalIn 0.2s ease;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
   }
-  @keyframes slideUp {
-    from { transform: translateY(20px); opacity: 0; }
-    to { transform: translateY(0); opacity: 1; }
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.96) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
   }
+
   .modal-header {
     padding: 20px 24px 16px;
     border-bottom: 1px solid var(--border);
@@ -503,1224 +657,1528 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-  }
-  .modal-title { font-size: 17px; font-weight: 800; }
-  .modal-close {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-size: 20px;
-    cursor: pointer;
-    line-height: 1;
-    padding: 0;
     flex-shrink: 0;
   }
+  .modal-title { font-size: 18px; font-weight: 700; color: var(--text); }
+  .modal-sub { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; }
+  .modal-close {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-dim); font-size: 20px; padding: 2px;
+    line-height: 1; transition: color 0.15s;
+  }
   .modal-close:hover { color: var(--text); }
-  .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+
+  .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 20px; }
+
   .modal-footer {
     padding: 16px 24px;
     border-top: 1px solid var(--border);
     display: flex;
+    align-items: center;
     gap: 10px;
-    justify-content: flex-end;
+    flex-shrink: 0;
+    flex-wrap: wrap;
   }
+  .modal-footer .spacer { flex: 1; }
 
-  .detail-row { display: flex; flex-direction: column; gap: 4px; }
-  .detail-label {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .detail-item { display: flex; flex-direction: column; gap: 4px; }
+  .detail-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+  .detail-value {
+    font-size: 13.5px; color: var(--text);
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   }
-  .detail-value { font-size: 13px; font-weight: 600; color: var(--text); }
-  .detail-value a { color: var(--amber); text-decoration: none; }
+  .detail-value a { color: var(--blue); text-decoration: none; }
   .detail-value a:hover { text-decoration: underline; }
 
-  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-
-  .message-box {
-    background: var(--bg);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
-    padding: 14px;
-    font-size: 13px;
-    line-height: 1.7;
-    color: var(--text-dim);
-    white-space: pre-wrap;
+  .score-badges-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .score-large {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border-radius: 8px;
+    font-weight: 700; font-size: 14px;
   }
-  .message-textarea {
-    background: var(--bg);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
-    padding: 14px;
-    font-family: var(--font-display);
-    font-size: 13px;
-    line-height: 1.7;
-    color: var(--text);
-    width: 100%;
-    min-height: 120px;
-    resize: vertical;
-    outline: none;
-  }
-  .message-textarea:focus { border-color: var(--amber); }
 
   .ai-reasoning {
-    background: var(--amber-glow);
+    background: rgba(240,165,0,0.08);
     border: 1px solid rgba(240,165,0,0.2);
-    border-radius: 8px;
-    padding: 12px 14px;
-    font-size: 12px;
+    border-radius: var(--radius);
+    padding: 14px;
+    font-size: 13px;
+    color: var(--text-dim);
     line-height: 1.6;
-    color: var(--amber);
   }
-  .review-insight {
-    background: var(--blue-dim);
-    border: 1px solid rgba(59,130,246,0.15);
-    border-radius: 8px;
-    padding: 12px 14px;
-    font-size: 12px;
-    line-height: 1.6;
-    color: #93c5fd;
+  .ai-reasoning-label {
+    font-size: 11px; font-weight: 700; color: var(--amber);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+  }
+
+  .outreach-wrap { position: relative; }
+  .outreach-wrap textarea { min-height: 90px; resize: vertical; }
+  .outreach-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+  .section-label {
+    font-size: 11px; font-weight: 700; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-label::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
   }
 
   .status-select {
-    background: var(--bg);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
-    color: var(--text);
-    font-family: var(--font-display);
-    font-size: 13px;
-    padding: 8px 12px;
-    outline: none;
-    width: 100%;
+    display: flex; gap: 6px; flex-wrap: wrap;
   }
+  .status-opt {
+    padding: 6px 14px; border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 12.5px; font-weight: 500;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .status-opt:hover { border-color: var(--amber-dim); color: var(--text); }
+  .status-opt.sel { border-color: var(--amber); background: var(--amber-glow); color: var(--amber); }
 
-  .notes-textarea {
-    background: var(--bg);
-    border: 1px solid var(--border2);
-    border-radius: 8px;
-    padding: 10px 12px;
-    font-family: var(--font-display);
-    font-size: 13px;
-    color: var(--text);
-    width: 100%;
-    min-height: 80px;
-    resize: vertical;
-    outline: none;
-  }
+  /* History search leads modal */
+  .history-leads-modal .modal { max-width: 900px; }
 
-  /* ===== PROGRESS ===== */
-  .progress-bar-wrap {
-    background: var(--border);
-    border-radius: 4px;
-    height: 4px;
-    overflow: hidden;
-  }
-  .progress-bar {
-    height: 100%;
-    background: var(--amber);
-    border-radius: 4px;
-    transition: width 0.5s ease;
-    width: 0%;
-  }
+  /* ==================== TOAST ==================== */
 
-  /* ===== TOAST ===== */
-  .toast-container {
+  #toast-container {
     position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 200;
+    z-index: 9999;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     pointer-events: none;
   }
   .toast {
     background: var(--surface2);
-    border: 1px solid var(--border2);
-    border-radius: 10px;
-    padding: 12px 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
     font-size: 13px;
-    font-weight: 600;
+    color: var(--text);
     display: flex;
     align-items: center;
     gap: 10px;
-    pointer-events: all;
-    animation: toastIn 0.3s ease;
-    box-shadow: var(--shadow);
-    max-width: 340px;
+    min-width: 280px;
+    max-width: 360px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    animation: toastIn 0.25s ease;
+    pointer-events: auto;
   }
-  @keyframes toastIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes toastOut { to { opacity: 0; transform: translateX(20px); } }
+  .toast.out { animation: toastOut 0.25s ease forwards; }
+  .toast-icon { font-size: 16px; flex-shrink: 0; }
+  .toast-text { flex: 1; }
+  .toast-success { border-left: 3px solid var(--green); }
+  .toast-error { border-left: 3px solid var(--red); }
+  .toast-info { border-left: 3px solid var(--blue); }
+  .toast-warn { border-left: 3px solid var(--amber); }
+
+  /* Divider */
+  .divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* Badge count */
+  .count-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--amber-glow); color: var(--amber);
+    border-radius: 10px; font-size: 10px; font-weight: 700;
+    padding: 1px 6px; min-width: 18px; margin-left: 4px;
+    border: 1px solid rgba(240,165,0,0.3);
   }
-  .toast.success { border-left: 3px solid var(--green); }
-  .toast.error { border-left: 3px solid var(--red); }
-  .toast.info { border-left: 3px solid var(--amber); }
 
-  /* ===== STATS PAGE ===== */
-  .chart-bar-wrap { display: flex; flex-direction: column; gap: 8px; }
-  .chart-bar-row { display: flex; align-items: center; gap: 10px; }
-  .chart-bar-label { font-size: 11px; color: var(--text-dim); width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .chart-bar-track { flex: 1; background: var(--border); border-radius: 4px; height: 8px; }
-  .chart-bar-fill { height: 8px; border-radius: 4px; background: var(--amber); transition: width 0.5s; }
-  .chart-bar-count { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); width: 24px; text-align: right; }
-
-  /* ===== SPINNER ===== */
-  .spinner {
-    width: 14px; height: 14px;
-    border: 2px solid rgba(240,165,0,0.3);
-    border-top-color: var(--amber);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    display: inline-block;
-    flex-shrink: 0;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* ===== SCRAPE CONFIG ===== */
-  .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .tag-chip {
-    padding: 4px 10px;
-    border-radius: 16px;
-    border: 1px solid var(--border2);
-    background: transparent;
-    color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .tag-chip:hover { color: var(--text); }
-  .tag-chip.sel { background: var(--amber-glow); color: var(--amber); border-color: var(--amber-dim); }
-
-  /* ===== SCROLLBAR ===== */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-
-  /* ===== RESPONSIVE TWEAKS ===== */
+  /* Responsive tweaks */
   @media (max-width: 900px) {
-    .scraper-form { grid-template-columns: 1fr 1fr; }
-    .scraper-form .btn { grid-column: span 2; }
+    :root { --sidebar-w: 200px; }
+    .charts-grid { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr; }
+    .detail-grid { grid-template-columns: 1fr; }
   }
+
+  /* Helpers */
+  .flex { display: flex; }
+  .items-center { align-items: center; }
+  .gap-8 { gap: 8px; }
+  .gap-12 { gap: 12px; }
+  .ml-auto { margin-left: auto; }
+  .text-dim { color: var(--text-dim); }
+  .text-green { color: var(--green); }
+  .text-amber { color: var(--amber); }
+  .text-red { color: var(--red); }
+  .text-blue { color: var(--blue); }
+  .font-mono { font-family: monospace; }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Progress bar for analytics */
+  .progress-wrap { margin-top: 6px; }
+  .progress { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width 0.6s; }
+
+  /* Export buttons */
+  .export-row { display: flex; gap: 8px; }
 </style>
 </head>
 <body>
-
-<div class="shell">
-  <!-- ===== SIDEBAR ===== -->
-  <aside class="sidebar">
-    <div class="logo">
+<div id="app">
+  <!-- SIDEBAR -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
       <div class="logo-title">⚡ LeadHunter</div>
-      <div class="logo-sub">AI Lead Generation</div>
+      <div class="logo-sub">AI v2</div>
     </div>
-
-    <div class="nav-item active" data-page="scraper">
-      <span class="nav-icon">🔍</span> Scraper
+    <div class="sidebar-nav">
+      <div class="nav-item active" data-page="new-search">
+        <span class="nav-icon">🔍</span>
+        <span class="nav-label">New Search</span>
+      </div>
+      <div class="nav-item" data-page="all-leads">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">All Leads <span class="count-badge" id="leads-count-badge">0</span></span>
+      </div>
+      <div class="nav-item" data-page="history">
+        <span class="nav-icon">📂</span>
+        <span class="nav-label">History</span>
+      </div>
+      <div class="nav-item" data-page="analytics">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Analytics</span>
+      </div>
     </div>
-    <div class="nav-item" data-page="leads">
-      <span class="nav-icon">📋</span> All Leads
-    </div>
-    <div class="nav-item" data-page="hotleads">
-      <span class="nav-icon">🔥</span> Hot Leads
-    </div>
-    <div class="nav-item" data-page="stats">
-      <span class="nav-icon">📊</span> Analytics
-    </div>
-
-    <div class="sidebar-footer">
+    <div class="sidebar-bottom">
       <div class="api-status">
-        <div class="dot" id="scrape-status-dot"></div>
-        <span id="scrape-status-text">Idle</span>
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-label">Connecting…</span>
       </div>
     </div>
-  </aside>
+  </nav>
 
-  <!-- ===== MAIN ===== -->
-  <div class="main">
-    <!-- Topbar -->
-    <div class="topbar">
-      <div class="page-title" id="page-title">🔍 Scraper</div>
-      <div class="topbar-actions">
-        <button class="btn btn-outline" onclick="exportCSV()">⬇️ Export CSV</button>
-        <button class="btn btn-danger btn-sm" onclick="clearAllLeads()">🗑 Clear All</button>
+  <!-- MAIN CONTENT -->
+  <div id="main">
+
+    <!-- ===== NEW SEARCH PAGE ===== -->
+    <div class="page active" id="page-new-search">
+      <div class="page-header">
+        <div>
+          <div class="page-title">New Search</div>
+          <div class="page-sub">Find businesses and generate qualified leads with AI</div>
+        </div>
+        <div class="export-row" id="export-btns" style="display:none;">
+          <!-- shown after search completes -->
+        </div>
+      </div>
+
+      <!-- Search form -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Search Configuration</span>
+        </div>
+
+        <!-- Category chips -->
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Business Category</label>
+          <div class="chip-grid" id="category-chips">
+            <div class="chip" data-cat="Restaurants">🍽 Restaurants</div>
+            <div class="chip" data-cat="Cafes">☕ Cafes</div>
+            <div class="chip" data-cat="Barbershops">✂️ Barbershops</div>
+            <div class="chip" data-cat="Salons">💅 Salons</div>
+            <div class="chip" data-cat="Clinics">🏥 Clinics</div>
+            <div class="chip" data-cat="Gyms">💪 Gyms</div>
+            <div class="chip" data-cat="Bakeries">🥐 Bakeries</div>
+            <div class="chip" data-cat="Pharmacies">💊 Pharmacies</div>
+            <div class="chip" data-cat="Dental">🦷 Dental</div>
+            <div class="chip" data-cat="Hotels">🏨 Hotels</div>
+            <div class="chip" data-cat="Car Repair">🔧 Car Repair</div>
+            <div class="chip" data-cat="Law Offices">⚖️ Law Offices</div>
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-bottom:16px;">
+          <div class="form-group">
+            <label class="form-label">Custom Category (overrides chip)</label>
+            <input type="text" id="custom-category" placeholder="e.g. Pet Grooming, Spa, Yoga Studio…">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Location</label>
+            <input type="text" id="location-input" placeholder="City name, area, or zip code e.g. Dubai Marina">
+          </div>
+        </div>
+
+        <div class="form-row-3" style="margin-bottom:20px;">
+          <div class="form-group">
+            <label class="form-label">Country</label>
+            <input type="text" id="country-input" placeholder="e.g. UAE, Saudi Arabia">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Search Radius</label>
+            <select id="radius-select">
+              <option value="5km">5 km</option>
+              <option value="10km" selected>10 km</option>
+              <option value="20km">20 km</option>
+              <option value="whole_city">Whole city</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Result Count</label>
+            <select id="count-select">
+              <option value="10">10 leads</option>
+              <option value="20" selected>20 leads</option>
+              <option value="30">30 leads</option>
+              <option value="50">50 leads</option>
+            </select>
+          </div>
+        </div>
+
+        <button class="btn btn-amber start-btn" id="start-btn" onclick="startSearch()">
+          ▶ Start Search
+        </button>
+      </div>
+
+      <!-- Agent Log -->
+      <div id="agent-log-container">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">🤖 Live Agent Log</span>
+            <button class="btn btn-red btn-sm" id="stop-btn" onclick="stopSearch()">■ Stop Search</button>
+          </div>
+          <div class="log-console" id="log-console"></div>
+          <div class="status-bar" id="status-bar" style="margin-top:10px;">
+            <div class="status-spinner"></div>
+            <span id="status-bar-text">Initializing agent…</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Leads -->
+      <div id="live-leads-container">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">📍 Leads Found <span class="count-badge" id="live-lead-count">0</span></span>
+          </div>
+          <div class="live-leads-grid" id="live-leads-grid"></div>
+        </div>
       </div>
     </div>
 
-    <!-- Content -->
-    <div class="content">
-
-      <!-- ==============================
-           PAGE: SCRAPER
-      ============================== -->
-      <div class="page active" id="page-scraper">
-
-        <!-- Stats row -->
-        <div class="stats-grid">
-          <div class="stat-card amber">
-            <div class="stat-icon">🏢</div>
-            <div class="stat-value" id="s-total">0</div>
-            <div class="stat-label">Total Scraped</div>
-          </div>
-          <div class="stat-card green">
-            <div class="stat-icon">🚫</div>
-            <div class="stat-value" id="s-nowebsite">0</div>
-            <div class="stat-label">No Website</div>
-          </div>
-          <div class="stat-card blue">
-            <div class="stat-icon">⭐</div>
-            <div class="stat-value" id="s-highscore">0</div>
-            <div class="stat-label">High Score (7+)</div>
-          </div>
-          <div class="stat-card red">
-            <div class="stat-icon">📤</div>
-            <div class="stat-value" id="s-contacted">0</div>
-            <div class="stat-label">Contacted</div>
-          </div>
+    <!-- ===== ALL LEADS PAGE ===== -->
+    <div class="page" id="page-all-leads">
+      <div class="page-header">
+        <div>
+          <div class="page-title">All Leads</div>
+          <div class="page-sub" id="all-leads-sub">0 total leads</div>
         </div>
-
-        <!-- Scraper config panel -->
-        <div class="scraper-panel">
-          <div class="panel-header">
-            <div class="panel-title">⚙️ Scraper Configuration</div>
-          </div>
-          <div class="panel-body" style="display:flex;flex-direction:column;gap:16px;">
-
-            <!-- Category chips -->
-            <div class="form-group">
-              <div class="form-label">Business Category</div>
-              <div class="tag-chips" id="category-chips">
-                <div class="tag-chip sel" data-cat="restaurants">🍽 Restaurants</div>
-                <div class="tag-chip" data-cat="cafes">☕ Cafes</div>
-                <div class="tag-chip" data-cat="barbershops">✂️ Barbershops</div>
-                <div class="tag-chip" data-cat="salons">💅 Salons</div>
-                <div class="tag-chip" data-cat="clinics">🏥 Clinics</div>
-                <div class="tag-chip" data-cat="gyms">🏋️ Gyms</div>
-                <div class="tag-chip" data-cat="bakeries">🥖 Bakeries</div>
-                <div class="tag-chip" data-cat="pharmacies">💊 Pharmacies</div>
-                <div class="tag-chip" data-cat="car repair shops">🚗 Car Repair</div>
-                <div class="tag-chip" data-cat="dental clinics">🦷 Dental</div>
-                <div class="tag-chip" data-cat="hotels">🏨 Hotels</div>
-                <div class="tag-chip" data-cat="law offices">⚖️ Law Offices</div>
-              </div>
-            </div>
-
-            <!-- Form row -->
-            <div class="scraper-form">
-              <div class="form-group">
-                <div class="form-label">City</div>
-                <input class="form-input" id="inp-city" value="Riyadh" placeholder="e.g. Riyadh, Jeddah..."/>
-              </div>
-              <div class="form-group">
-                <div class="form-label">Custom Category (optional)</div>
-                <input class="form-input" id="inp-custom-cat" placeholder="e.g. perfume shops"/>
-              </div>
-              <div class="form-group">
-                <div class="form-label">Max Leads</div>
-                <select class="form-select" id="inp-limit">
-                  <option value="20">20</option>
-                  <option value="50" selected>50</option>
-                  <option value="100">100</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <div class="form-label">&nbsp;</div>
-                <button class="btn btn-primary" id="btn-start" onclick="startScraping()">▶ Start Scraping</button>
-              </div>
-            </div>
-
-            <!-- Progress -->
-            <div id="progress-section" style="display:none;flex-direction:column;gap:8px;">
-              <div style="display:flex;align-items:center;justify-content:space-between;">
-                <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);" id="progress-label">Scraping...</span>
-                <button class="btn btn-danger btn-sm" onclick="stopScraping()">■ Stop</button>
-              </div>
-              <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
-            </div>
-          </div>
+        <div class="flex gap-8">
+          <button class="btn btn-ghost btn-sm" onclick="exportAll('excel')">📥 Export Excel</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportAll('pdf')">📄 Export PDF</button>
         </div>
+      </div>
 
-        <!-- Live log -->
-        <div class="scraper-panel">
-          <div class="panel-header">
-            <div class="panel-title">🖥 Live Activity Log</div>
-            <button class="btn btn-outline btn-sm" onclick="clearLog()">Clear</button>
-          </div>
-          <div class="panel-body" style="padding:0;">
-            <div class="log-console" id="log-console">
-              <div class="log-line muted">// Ready. Configure and click "Start Scraping" above.</div>
-              <div class="log-line muted">// A Chrome browser window will open automatically.</div>
-              <div class="log-line muted">// Do not close it while scraping is active.</div>
-            </div>
-          </div>
+      <div class="filter-bar" id="filter-bar">
+        <button class="filter-tab active" data-filter="all">All</button>
+        <button class="filter-tab" data-filter="no-website">No Website</button>
+        <button class="filter-tab" data-filter="score7">Score 7+</button>
+        <button class="filter-tab" data-filter="new">New</button>
+        <button class="filter-tab" data-filter="contacted">Contacted</button>
+        <button class="filter-tab" data-filter="replied">Replied</button>
+        <button class="filter-tab" data-filter="converted">Converted</button>
+        <button class="filter-tab" data-filter="skipped">Skipped</button>
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="leads-search" placeholder="Search leads…" oninput="renderLeadsTable()">
         </div>
+      </div>
 
-        <!-- Recent leads preview -->
-        <div class="scraper-panel">
-          <div class="panel-header">
-            <div class="panel-title">🆕 Recently Scraped</div>
-            <button class="btn btn-outline btn-sm" onclick="showPage('leads')">View All →</button>
-          </div>
-          <div id="recent-leads-body">
-            <div class="empty-state" style="padding:30px 20px;">
-              <div class="empty-icon">🔍</div>
-              <div class="empty-title">No leads yet</div>
-              <div class="empty-sub">Start scraping to see results here</div>
-            </div>
-          </div>
-        </div>
-
-      </div><!-- end page-scraper -->
-
-      <!-- ==============================
-           PAGE: ALL LEADS
-      ============================== -->
-      <div class="page" id="page-leads">
-        <div class="filters-bar">
-          <div class="filter-chip active" data-filter="all" onclick="setFilter('all', this)">All</div>
-          <div class="filter-chip" data-filter="no-website" onclick="setFilter('no-website', this)">🚫 No Website</div>
-          <div class="filter-chip" data-filter="high-score" onclick="setFilter('high-score', this)">⭐ Score 7+</div>
-          <div class="filter-chip" data-filter="new" onclick="setFilter('new', this)">🆕 New</div>
-          <div class="filter-chip" data-filter="contacted" onclick="setFilter('contacted', this)">📤 Contacted</div>
-          <div class="filter-chip" data-filter="replied" onclick="setFilter('replied', this)">💬 Replied</div>
-          <div class="filter-chip" data-filter="converted" onclick="setFilter('converted', this)">✅ Converted</div>
-          <div class="filter-chip" data-filter="skipped" onclick="setFilter('skipped', this)">⏭ Skipped</div>
-          <input class="search-input" id="search-input" placeholder="🔎 Search leads..." oninput="renderLeads()"/>
-        </div>
+      <div class="panel" style="padding:0; overflow:hidden;">
         <div class="table-wrap">
-          <table class="leads-table">
+          <table id="leads-table">
             <thead>
               <tr>
                 <th>Business</th>
                 <th>Score</th>
                 <th>Website</th>
+                <th>Marketing</th>
                 <th>Phone</th>
-                <th>Rating</th>
+                <th>Email</th>
+                <th>Instagram</th>
+                <th>LinkedIn</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
-            <tbody id="leads-tbody">
-              <tr><td colspan="7">
-                <div class="empty-state">
-                  <div class="empty-icon">📋</div>
-                  <div class="empty-title">No leads yet</div>
-                  <div class="empty-sub">Go to the Scraper tab to find leads</div>
-                </div>
-              </td></tr>
-            </tbody>
+            <tbody id="leads-tbody"></tbody>
           </table>
         </div>
-      </div>
-
-      <!-- ==============================
-           PAGE: HOT LEADS
-      ============================== -->
-      <div class="page" id="page-hotleads">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-          <div style="font-size:13px;color:var(--text-muted);">
-            Businesses with <strong style="color:var(--amber)">no website</strong> + AI score of <strong style="color:var(--amber)">7 or higher</strong>. These are your best leads.
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="leads-table">
-            <thead>
-              <tr>
-                <th>Business</th>
-                <th>Score</th>
-                <th>Phone</th>
-                <th>Rating</th>
-                <th>AI Insight</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="hot-tbody"></tbody>
-          </table>
+        <div id="leads-empty" class="empty-state" style="display:none;">
+          <div class="empty-icon">📋</div>
+          <div class="empty-title">No leads found</div>
+          <div class="empty-sub">Start a search to find leads or adjust your filters.</div>
         </div>
       </div>
+    </div>
 
-      <!-- ==============================
-           PAGE: ANALYTICS
-      ============================== -->
-      <div class="page" id="page-stats">
-        <div class="stats-grid">
-          <div class="stat-card amber">
-            <div class="stat-icon">🏢</div>
-            <div class="stat-value" id="st-total">0</div>
-            <div class="stat-label">Total Leads</div>
-          </div>
-          <div class="stat-card green">
-            <div class="stat-icon">🚫</div>
-            <div class="stat-value" id="st-nowebsite">0</div>
-            <div class="stat-label">No Website</div>
-          </div>
-          <div class="stat-card blue">
-            <div class="stat-icon">⭐</div>
-            <div class="stat-value" id="st-hot">0</div>
-            <div class="stat-label">Hot Leads (7+)</div>
-          </div>
-          <div class="stat-card red">
-            <div class="stat-icon">✅</div>
-            <div class="stat-value" id="st-converted">0</div>
-            <div class="stat-label">Converted</div>
-          </div>
+    <!-- ===== HISTORY PAGE ===== -->
+    <div class="page" id="page-history">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Search History</div>
+          <div class="page-sub">All past and active searches</div>
         </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadSearchHistory()">↻ Refresh</button>
+      </div>
 
-        <div class="scraper-panel">
-          <div class="panel-header">
-            <div class="panel-title">📊 Leads by Category</div>
-          </div>
-          <div class="panel-body">
-            <div class="chart-bar-wrap" id="category-chart">
-              <div style="color:var(--text-muted);font-size:12px;">No data yet.</div>
-            </div>
-          </div>
+      <div class="history-grid" id="history-grid"></div>
+      <div id="history-empty" class="empty-state" style="display:none;">
+        <div class="empty-icon">📂</div>
+        <div class="empty-title">No searches yet</div>
+        <div class="empty-sub">Run a search to see your history here.</div>
+      </div>
+    </div>
+
+    <!-- ===== ANALYTICS PAGE ===== -->
+    <div class="page" id="page-analytics">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Analytics</div>
+          <div class="page-sub">Lead pipeline insights and statistics</div>
         </div>
+        <button class="btn btn-ghost btn-sm" onclick="renderAnalytics()">↻ Refresh</button>
+      </div>
 
-        <div class="scraper-panel">
-          <div class="panel-header">
-            <div class="panel-title">📈 Pipeline Overview</div>
-          </div>
-          <div class="panel-body">
-            <div class="chart-bar-wrap" id="pipeline-chart"></div>
-          </div>
+      <div class="stat-cards" id="stat-cards"></div>
+
+      <div class="charts-grid">
+        <div class="panel chart-container">
+          <div class="chart-title">Leads by Website Status</div>
+          <div class="bar-chart" id="chart-website"></div>
+        </div>
+        <div class="panel chart-container">
+          <div class="chart-title">Leads by AI Score Range</div>
+          <div class="bar-chart" id="chart-score"></div>
         </div>
       </div>
 
-    </div><!-- end content -->
-  </div><!-- end main -->
-</div><!-- end shell -->
+      <div class="panel chart-container">
+        <div class="chart-title">Pipeline Funnel</div>
+        <div class="funnel" id="chart-funnel"></div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /app -->
 
 <!-- ===== LEAD DETAIL MODAL ===== -->
-<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
-  <div class="modal" id="modal">
+<div class="modal-overlay" id="lead-modal">
+  <div class="modal">
     <div class="modal-header">
       <div>
-        <div class="modal-title" id="modal-title">Business Name</div>
-        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-top:4px;" id="modal-sub"></div>
+        <div class="modal-title" id="modal-biz-name">Business Name</div>
+        <div class="modal-sub" id="modal-biz-sub">Category · City</div>
       </div>
-      <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick="closeLeadModal()">✕</button>
     </div>
-    <div class="modal-body" id="modal-body"></div>
-    <div class="modal-footer" id="modal-footer"></div>
+    <div class="modal-body" id="modal-body">
+      <!-- dynamically filled -->
+    </div>
+    <div class="modal-footer" id="modal-footer">
+      <button class="btn btn-amber" onclick="saveLeadChanges()">💾 Save Changes</button>
+      <button class="btn btn-red" onclick="deleteLeadFromModal()">🗑 Delete</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" onclick="closeLeadModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== HISTORY SEARCH LEADS MODAL ===== -->
+<div class="modal-overlay history-leads-modal" id="history-modal">
+  <div class="modal" style="max-width:860px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="hm-title">Search Results</div>
+        <div class="modal-sub" id="hm-sub"></div>
+      </div>
+      <button class="modal-close" onclick="closeHistoryModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Business</th><th>Score</th><th>Website</th><th>Phone</th><th>Email</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="hm-tbody"></tbody>
+        </table>
+      </div>
+      <div id="hm-empty" class="empty-state" style="display:none;">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-title">No leads for this search</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" onclick="closeHistoryModal()">Close</button>
+    </div>
   </div>
 </div>
 
 <!-- ===== TOAST CONTAINER ===== -->
-<div class="toast-container" id="toast-container"></div>
+<div id="toast-container"></div>
 
 <script>
 // ============================================================
-//  APP STATE
+//  STATE
 // ============================================================
-let allLeads = [];
-let currentFilter = 'all';
-let activeLeadId = null;
-let eventSource = null;
+const state = {
+  allLeads: [],
+  allSearches: [],
+  activeSearchId: null,
+  currentPage: 'new-search',
+  selectedCategory: null,
+  filterTab: 'all',
+  editingLeadId: null,
+  wsConnected: false,
+  ws: null,
+  wsReconnectTimer: null,
+};
 
 // ============================================================
-//  INIT
+//  NAVIGATION
 // ============================================================
-document.addEventListener('DOMContentLoaded', () => {
-  setupNav();
-  setupCategoryChips();
-  connectSSE();
-  fetchLeads();
-  setInterval(fetchStats, 15000);
+function navigateTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  state.currentPage = page;
+
+  if (page === 'all-leads') renderLeadsTable();
+  if (page === 'history') renderHistory();
+  if (page === 'analytics') renderAnalytics();
+}
+
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => navigateTo(item.dataset.page));
 });
 
 // ============================================================
-//  NAV
+//  WEBSOCKET
 // ============================================================
-function setupNav() {
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('click', () => {
-      showPage(item.dataset.page);
-    });
-  });
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}`;
+  try {
+    state.ws = new WebSocket(url);
+  } catch (e) {
+    setStatus('disconnected', 'Disconnected');
+    scheduleReconnect();
+    return;
+  }
+
+  state.ws.onopen = () => {
+    state.wsConnected = true;
+    setStatus('connected', 'Connected');
+    clearTimeout(state.wsReconnectTimer);
+  };
+
+  state.ws.onclose = () => {
+    state.wsConnected = false;
+    setStatus('disconnected', 'Disconnected');
+    scheduleReconnect();
+  };
+
+  state.ws.onerror = () => {
+    state.wsConnected = false;
+    setStatus('disconnected', 'Connection error');
+  };
+
+  state.ws.onmessage = (evt) => {
+    let data;
+    try { data = JSON.parse(evt.data); } catch { return; }
+    handleWsEvent(data);
+  };
 }
 
-function showPage(pageId) {
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+function scheduleReconnect() {
+  clearTimeout(state.wsReconnectTimer);
+  state.wsReconnectTimer = setTimeout(connectWS, 3000);
+}
 
-  const nav = document.querySelector(`[data-page="${pageId}"]`);
-  const page = document.getElementById(`page-${pageId}`);
-  if (nav) nav.classList.add('active');
-  if (page) page.classList.add('active');
+function handleWsEvent(data) {
+  switch (data.type) {
+    case 'agent_log':
+      appendLog(data.level || 'info', data.message);
+      break;
+    case 'agent_step':
+      updateStatusBar(data.businessName ? `Analyzing: ${data.businessName}` : `Step: ${data.step}`);
+      break;
+    case 'lead_found':
+      handleLeadFound(data.lead);
+      break;
+    case 'lead_updated':
+      handleLeadUpdated(data.lead);
+      break;
+    case 'search_started':
+      handleSearchStarted(data.search);
+      break;
+    case 'search_complete':
+      handleSearchComplete(data.searchId, data.total);
+      break;
+    case 'search_error':
+      handleSearchError(data.searchId, data.error);
+      break;
+    case 'search_stopped':
+      handleSearchStopped(data.searchId);
+      break;
+  }
+}
 
-  const titles = { scraper: '🔍 Scraper', leads: '📋 All Leads', hotleads: '🔥 Hot Leads', stats: '📊 Analytics' };
-  document.getElementById('page-title').textContent = titles[pageId] || '';
-
-  if (pageId === 'leads') renderLeads();
-  if (pageId === 'hotleads') renderHotLeads();
-  if (pageId === 'stats') renderStats();
+// ============================================================
+//  STATUS
+// ============================================================
+function setStatus(state_, label) {
+  const dot = document.getElementById('status-dot');
+  const lbl = document.getElementById('status-label');
+  dot.className = `status-dot ${state_}`;
+  lbl.textContent = label;
 }
 
 // ============================================================
 //  CATEGORY CHIPS
 // ============================================================
-function setupCategoryChips() {
-  document.querySelectorAll('.tag-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('sel'));
-      chip.classList.add('sel');
-      document.getElementById('inp-custom-cat').value = '';
-    });
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+    if (state.selectedCategory === chip.dataset.cat) {
+      state.selectedCategory = null;
+    } else {
+      chip.classList.add('selected');
+      state.selectedCategory = chip.dataset.cat;
+      document.getElementById('custom-category').value = '';
+    }
   });
-}
+});
 
-function getSelectedCategory() {
-  const custom = document.getElementById('inp-custom-cat').value.trim();
-  if (custom) return custom;
-  const sel = document.querySelector('.tag-chip.sel');
-  return sel ? sel.dataset.cat : 'restaurants';
-}
-
-// ============================================================
-//  SERVER-SENT EVENTS (real-time updates)
-// ============================================================
-function connectSSE() {
-  if (eventSource) eventSource.close();
-  eventSource = new EventSource('/api/events');
-
-  eventSource.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-
-    if (data.type === 'status') {
-      addLog(data.message);
-    }
-    else if (data.type === 'new_lead') {
-      allLeads.unshift(data.lead);
-      updateScraperStats();
-      renderRecentLeads();
-      // If user is on those pages, re-render
-      if (document.getElementById('page-leads').classList.contains('active')) renderLeads();
-      if (document.getElementById('page-hotleads').classList.contains('active')) renderHotLeads();
-
-      const icon = data.lead.hasWebsite ? '🌐' : '🚫';
-      addLog(`${icon} New lead: ${data.lead.name} (Score: ${data.lead.aiScore}/10)`, data.lead.hasWebsite ? 'muted' : 'success');
-    }
-    else if (data.type === 'scrape_started') {
-      setScraping(true);
-      addLog(`▶ Scraper started: "${data.category}" in ${data.city} (max ${data.limit})`, 'info');
-      document.getElementById('progress-section').style.display = 'flex';
-    }
-    else if (data.type === 'scrape_done') {
-      setScraping(false);
-      addLog(`🎉 Scraping complete! ${data.totalLeads} total leads in database.`, 'success');
-      document.getElementById('progress-section').style.display = 'none';
-      fetchStats();
-    }
-    else if (data.type === 'scrape_stopped') {
-      setScraping(false);
-      addLog('■ Scraping stopped by user.', 'error');
-      document.getElementById('progress-section').style.display = 'none';
-    }
-    else if (data.type === 'scrape_error') {
-      setScraping(false);
-      addLog(`❌ Error: ${data.message}`, 'error');
-      document.getElementById('progress-section').style.display = 'none';
-    }
-    else if (data.type === 'lead_updated') {
-      const idx = allLeads.findIndex(l => l.id === data.lead.id);
-      if (idx !== -1) allLeads[idx] = data.lead;
-    }
-    else if (data.type === 'lead_enriched') {
-      const idx = allLeads.findIndex(l => l.id === data.lead.id);
-      if (idx !== -1) allLeads[idx] = data.lead;
-      // Refresh the modal if it's showing this lead
-      if (activeLeadId === data.lead.id) openModal(data.lead.id);
-      renderLeads();
-      renderHotLeads();
-      toast(`Contact info found for ${data.lead.name}!`, 'success');
-    }
-  };
-
-  eventSource.onerror = () => {
-    setTimeout(connectSSE, 3000);
-  };
-}
+document.getElementById('custom-category').addEventListener('input', () => {
+  if (document.getElementById('custom-category').value.trim()) {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+    state.selectedCategory = null;
+  }
+});
 
 // ============================================================
-//  SCRAPING CONTROLS
+//  SEARCH
 // ============================================================
-async function startScraping() {
-  const category = getSelectedCategory();
-  const city = document.getElementById('inp-city').value.trim() || 'Riyadh';
-  const limit = parseInt(document.getElementById('inp-limit').value);
+async function startSearch() {
+  const customCat = document.getElementById('custom-category').value.trim();
+  const category = customCat || state.selectedCategory;
+  const location = document.getElementById('location-input').value.trim();
+  const country = document.getElementById('country-input').value.trim();
+  const radius = document.getElementById('radius-select').value;
+  const count = parseInt(document.getElementById('count-select').value);
 
-  document.getElementById('btn-start').disabled = true;
+  if (!category) { showToast('warn', '⚠️', 'Please select or enter a category.'); return; }
+  if (!location) { showToast('warn', '⚠️', 'Please enter a location.'); return; }
+
+  const payload = { category, location, country, radius, count };
+
+  document.getElementById('start-btn').disabled = true;
+  clearLog();
+  showLogPanel();
+  showLiveLeadsPanel();
+  document.getElementById('live-lead-count').textContent = '0';
+  document.getElementById('live-leads-grid').innerHTML = '';
+  setStatus('searching', 'Searching…');
+  appendLog('info', `Starting search: ${category} in ${location}${country ? ', ' + country : ''}…`);
 
   try {
-    const res = await fetch('/api/scrape/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, city, limit })
-    });
-    const data = await res.json();
-
-    if (!data.success && data.error) {
-      toast(data.error, 'error');
-      document.getElementById('btn-start').disabled = false;
-    }
-  } catch (err) {
-    toast('Could not start scraper. Is the server running?', 'error');
-    document.getElementById('btn-start').disabled = false;
+    const res = await apiFetch('/api/searches', { method: 'POST', body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const search = await res.json();
+    state.activeSearchId = search.id || search._id;
+    state.allSearches.unshift(search);
+    appendLog('success', `Search started (ID: ${state.activeSearchId})`);
+    updateBadge();
+  } catch (e) {
+    appendLog('error', `Failed to start search: ${e.message}`);
+    showToast('error', '❌', `Failed to start search: ${e.message}`);
+    document.getElementById('start-btn').disabled = false;
+    setStatus(state.wsConnected ? 'connected' : 'disconnected', state.wsConnected ? 'Connected' : 'Disconnected');
+    hideLogPanel();
   }
 }
 
-async function stopScraping() {
-  await fetch('/api/scrape/stop', { method: 'POST' });
-  document.getElementById('btn-start').disabled = false;
-}
-
-function setScraping(active) {
-  const dot = document.getElementById('scrape-status-dot');
-  const txt = document.getElementById('scrape-status-text');
-  const btn = document.getElementById('btn-start');
-
-  if (active) {
-    dot.className = 'dot amber';
-    txt.textContent = 'Scraping...';
-    btn.disabled = true;
-    animateProgress();
-  } else {
-    dot.className = 'dot green';
-    txt.textContent = 'Idle';
-    btn.disabled = false;
-    document.getElementById('progress-bar').style.width = '0%';
+async function stopSearch() {
+  if (!state.activeSearchId) return;
+  try {
+    await apiFetch(`/api/searches/${state.activeSearchId}/stop`, { method: 'POST' });
+    appendLog('warn', 'Stop requested…');
+  } catch (e) {
+    appendLog('error', `Stop failed: ${e.message}`);
   }
 }
 
-function animateProgress() {
-  const bar = document.getElementById('progress-bar');
-  let w = 0;
-  const iv = setInterval(() => {
-    w += Math.random() * 3;
-    if (w > 90) w = 90;
-    bar.style.width = w + '%';
-    if (!document.querySelector('.dot.amber')) {
-      bar.style.width = '100%';
-      setTimeout(() => { bar.style.width = '0%'; }, 500);
-      clearInterval(iv);
-    }
-  }, 800);
+function handleSearchStarted(search) {
+  if (!search) return;
+  const id = search.id || search._id;
+  state.activeSearchId = id;
+  const existing = state.allSearches.findIndex(s => (s.id || s._id) === id);
+  if (existing >= 0) state.allSearches[existing] = search;
+  else state.allSearches.unshift(search);
+  appendLog('success', 'Agent started — scanning businesses…');
+  showLogPanel();
+  showLiveLeadsPanel();
+}
+
+function handleSearchComplete(searchId, total) {
+  appendLog('success', `Search complete! Found ${total} leads.`);
+  document.getElementById('start-btn').disabled = false;
+  setStatus('connected', 'Connected');
+  updateStatusBar(`Done — ${total} lead${total !== 1 ? 's' : ''} found`, false);
+  state.activeSearchId = null;
+  updateSearchStatus(searchId, 'done');
+  showToast('success', '✅', `Search complete! ${total} leads found.`);
+  showExportButtons(searchId);
+  updateBadge();
+  if (state.currentPage === 'all-leads') renderLeadsTable();
+  if (state.currentPage === 'analytics') renderAnalytics();
+}
+
+function handleSearchError(searchId, error) {
+  appendLog('error', `Search error: ${error}`);
+  document.getElementById('start-btn').disabled = false;
+  setStatus('connected', 'Connected');
+  updateStatusBar(`Error: ${error}`, false);
+  state.activeSearchId = null;
+  updateSearchStatus(searchId, 'error');
+  showToast('error', '❌', `Search failed: ${error}`);
+}
+
+function handleSearchStopped(searchId) {
+  appendLog('warn', 'Search stopped by user.');
+  document.getElementById('start-btn').disabled = false;
+  setStatus('connected', 'Connected');
+  updateStatusBar('Search stopped.', false);
+  state.activeSearchId = null;
+  updateSearchStatus(searchId, 'stopped');
+  showToast('info', 'ℹ️', 'Search stopped.');
+}
+
+function handleLeadFound(lead) {
+  if (!lead) return;
+  const id = lead.id || lead._id;
+  const exists = state.allLeads.findIndex(l => (l.id || l._id) === id);
+  if (exists >= 0) state.allLeads[exists] = lead;
+  else state.allLeads.unshift(lead);
+
+  const count = parseInt(document.getElementById('live-lead-count').textContent) + 1;
+  document.getElementById('live-lead-count').textContent = count;
+
+  const grid = document.getElementById('live-leads-grid');
+  const card = buildLeadCard(lead);
+  grid.prepend(card);
+  updateBadge();
+  appendLog('success', `Lead found: ${lead.businessName || lead.name}`);
+}
+
+function handleLeadUpdated(lead) {
+  if (!lead) return;
+  const id = lead.id || lead._id;
+  const idx = state.allLeads.findIndex(l => (l.id || l._id) === id);
+  if (idx >= 0) state.allLeads[idx] = lead;
+  else state.allLeads.unshift(lead);
+  if (state.currentPage === 'all-leads') renderLeadsTable();
+  updateBadge();
+}
+
+function updateSearchStatus(searchId, status) {
+  const idx = state.allSearches.findIndex(s => (s.id || s._id) === searchId);
+  if (idx >= 0) state.allSearches[idx].status = status;
 }
 
 // ============================================================
-//  LOG CONSOLE
+//  LOG PANEL
 // ============================================================
-function addLog(msg, type = '') {
-  const console = document.getElementById('log-console');
+function appendLog(level, msg) {
+  const console_ = document.getElementById('log-console');
+  const now = new Date();
+  const time = now.toTimeString().slice(0, 8);
   const line = document.createElement('div');
-  line.className = `log-line ${type}`;
-  const time = new Date().toLocaleTimeString();
-  line.textContent = `[${time}] ${msg}`;
-  console.appendChild(line);
-  console.scrollTop = console.scrollHeight;
-
-  // Keep log trimmed
-  while (console.children.length > 200) console.removeChild(console.firstChild);
+  line.className = `log-line ${level}`;
+  line.innerHTML = `<span class="log-time">[${time}]</span><span class="log-msg">${escHtml(msg)}</span>`;
+  console_.appendChild(line);
+  console_.scrollTop = console_.scrollHeight;
 }
+
 function clearLog() {
-  document.getElementById('log-console').innerHTML = '<div class="log-line muted">// Log cleared.</div>';
+  document.getElementById('log-console').innerHTML = '';
+}
+
+function showLogPanel() {
+  const c = document.getElementById('agent-log-container');
+  c.classList.add('visible');
+  c.style.display = '';
+}
+
+function hideLogPanel() {
+  document.getElementById('agent-log-container').classList.remove('visible');
+}
+
+function showLiveLeadsPanel() {
+  const c = document.getElementById('live-leads-container');
+  c.classList.add('visible');
+  c.style.display = '';
+}
+
+function updateStatusBar(text, spinning = true) {
+  const bar = document.getElementById('status-bar');
+  const spinner = bar.querySelector('.status-spinner');
+  document.getElementById('status-bar-text').textContent = text;
+  if (spinner) spinner.style.display = spinning ? 'block' : 'none';
+}
+
+function showExportButtons(searchId) {
+  const wrap = document.getElementById('export-btns');
+  wrap.style.display = 'flex';
+  wrap.innerHTML = `
+    <a class="btn btn-ghost btn-sm" href="/api/export/${searchId}/excel" target="_blank">📥 Export Excel</a>
+    <a class="btn btn-ghost btn-sm" href="/api/export/${searchId}/pdf" target="_blank">📄 Export PDF</a>
+  `;
 }
 
 // ============================================================
-//  FETCH DATA
+//  LEAD CARDS (live panel)
 // ============================================================
-async function fetchLeads() {
-  try {
-    const res = await fetch('/api/leads');
-    const data = await res.json();
-    allLeads = data.leads || [];
-    updateScraperStats();
-    renderRecentLeads();
-    renderLeads();
-    renderHotLeads();
-    fetchStats();
-  } catch (_) {}
-}
+function buildLeadCard(lead) {
+  const id = lead.id || lead._id;
+  const name = lead.businessName || lead.name || 'Unknown';
+  const score = lead.aiScore ?? lead.score ?? 0;
+  const wsStatus = lead.websiteStatus || 'none';
+  const phone = lead.phone || '';
+  const email = lead.email || '';
+  const ig = lead.instagram || lead.instagramHandle || '';
 
-async function fetchStats() {
-  try {
-    const res = await fetch('/api/stats');
-    const data = await res.json();
-    document.getElementById('s-total').textContent = data.total || 0;
-    document.getElementById('s-nowebsite').textContent = data.noWebsite || 0;
-    document.getElementById('s-highscore').textContent = data.highScore || 0;
-    document.getElementById('s-contacted').textContent = data.contacted || 0;
-
-    document.getElementById('st-total').textContent = data.total || 0;
-    document.getElementById('st-nowebsite').textContent = data.noWebsite || 0;
-    document.getElementById('st-hot').textContent = data.highScore || 0;
-    document.getElementById('st-converted').textContent = data.converted || 0;
-
-    renderCategoryChart(data.byCategory || {});
-    renderPipelineChart(data);
-  } catch (_) {}
-}
-
-function updateScraperStats() {
-  const total = allLeads.length;
-  const noWebsite = allLeads.filter(l => !l.hasWebsite).length;
-  const highScore = allLeads.filter(l => l.aiScore >= 7).length;
-  const contacted = allLeads.filter(l => l.status === 'contacted').length;
-  document.getElementById('s-total').textContent = total;
-  document.getElementById('s-nowebsite').textContent = noWebsite;
-  document.getElementById('s-highscore').textContent = highScore;
-  document.getElementById('s-contacted').textContent = contacted;
+  const card = document.createElement('div');
+  card.className = 'lead-card';
+  card.onclick = () => openLeadModal(id);
+  card.innerHTML = `
+    <div class="lead-card-header">
+      <div class="lead-card-name truncate">${escHtml(name)}</div>
+      <div class="${scoreBadgeClass(score)} score-badge">${score}</div>
+    </div>
+    <div class="lead-card-meta">
+      <div class="lead-card-row">${wsBadgeHtml(wsStatus)}</div>
+      ${phone ? `<div class="lead-card-row">📞 <span class="truncate">${escHtml(phone)}</span></div>` : ''}
+      ${email ? `<div class="lead-card-row">✉️ <span class="truncate">${escHtml(email)}</span></div>` : ''}
+      ${ig ? `<div class="lead-card-row">📸 <span class="truncate">@${escHtml(ig.replace('@',''))}</span></div>` : ''}
+    </div>
+  `;
+  return card;
 }
 
 // ============================================================
-//  RENDER LEADS
+//  LEADS TABLE
 // ============================================================
-function setFilter(filter, el) {
-  currentFilter = filter;
-  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-  if (el) el.classList.add('active');
-  renderLeads();
-}
+function renderLeadsTable() {
+  const tbody = document.getElementById('leads-tbody');
+  const empty = document.getElementById('leads-empty');
+  const table = document.getElementById('leads-table');
+  const filterVal = state.filterTab;
+  const searchVal = (document.getElementById('leads-search').value || '').toLowerCase();
 
-function getFilteredLeads() {
-  const search = (document.getElementById('search-input')?.value || '').toLowerCase();
-  let filtered = [...allLeads];
+  let leads = [...state.allLeads];
 
-  if (currentFilter === 'no-website') filtered = filtered.filter(l => !l.hasWebsite);
-  else if (currentFilter === 'high-score') filtered = filtered.filter(l => l.aiScore >= 7);
-  else if (['new','contacted','replied','converted','skipped'].includes(currentFilter))
-    filtered = filtered.filter(l => l.status === currentFilter);
+  // Filter tab
+  if (filterVal === 'no-website') leads = leads.filter(l => l.websiteStatus === 'none' || !l.websiteStatus);
+  else if (filterVal === 'score7') leads = leads.filter(l => (l.aiScore ?? l.score ?? 0) >= 7);
+  else if (['new','contacted','replied','converted','skipped'].includes(filterVal))
+    leads = leads.filter(l => (l.status || 'new') === filterVal);
 
-  if (search) {
-    filtered = filtered.filter(l =>
-      (l.name||'').toLowerCase().includes(search) ||
-      (l.category||'').toLowerCase().includes(search) ||
-      (l.address||'').toLowerCase().includes(search) ||
-      (l.phone||'').toLowerCase().includes(search)
+  // Search
+  if (searchVal) {
+    leads = leads.filter(l =>
+      (l.businessName || l.name || '').toLowerCase().includes(searchVal) ||
+      (l.category || '').toLowerCase().includes(searchVal) ||
+      (l.city || '').toLowerCase().includes(searchVal) ||
+      (l.email || '').toLowerCase().includes(searchVal) ||
+      (l.phone || '').toLowerCase().includes(searchVal)
     );
   }
 
-  return filtered.sort((a,b) => (b.aiScore||0) - (a.aiScore||0));
-}
+  document.getElementById('all-leads-sub').textContent = `${state.allLeads.length} total leads`;
+  updateBadge();
 
-function renderLeads() {
-  const tbody = document.getElementById('leads-tbody');
-  const leads = getFilteredLeads();
-
-  if (!leads.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
-      <div class="empty-icon">📋</div>
-      <div class="empty-title">No leads match this filter</div>
-      <div class="empty-sub">Try a different filter or start scraping</div>
-    </div></td></tr>`;
+  if (leads.length === 0) {
+    table.style.display = 'none';
+    empty.style.display = 'flex';
     return;
   }
+  table.style.display = '';
+  empty.style.display = 'none';
 
-  tbody.innerHTML = leads.map(l => `
-    <tr>
+  tbody.innerHTML = '';
+  leads.forEach(lead => {
+    const id = lead.id || lead._id;
+    const score = lead.aiScore ?? lead.score ?? 0;
+    const mktScore = lead.marketingScore ?? lead.mktScore ?? 0;
+    const wsStatus = lead.websiteStatus || 'none';
+    const status = lead.status || 'new';
+    const tr = document.createElement('tr');
+    tr.onclick = () => openLeadModal(id);
+    tr.innerHTML = `
+      <td><div class="td-name truncate">${escHtml(lead.businessName || lead.name || '–')}
+        <small>${escHtml(lead.category || '')}${lead.city ? ' · ' + escHtml(lead.city) : ''}</small>
+      </div></td>
+      <td><div class="${scoreBadgeClass(score)} score-badge">${score}</div></td>
+      <td>${wsBadgeHtml(wsStatus)}</td>
       <td>
-        <div class="biz-name">${escHtml(l.name)}</div>
-        <div class="biz-cat">${escHtml(l.category)}</div>
-        <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">
-          ${l.email ? `<span title="${escHtml(l.email)}" style="font-size:13px;cursor:default;">✉️</span>` : ''}
-          ${l.instagram ? `<a href="${escHtml(l.instagram)}" target="_blank" title="Instagram" style="font-size:13px;text-decoration:none;">📸</a>` : ''}
-          ${l.facebook ? `<a href="${escHtml(l.facebook)}" target="_blank" title="Facebook" style="font-size:13px;text-decoration:none;">🔵</a>` : ''}
-          ${l.linkedin ? `<a href="${escHtml(l.linkedin)}" target="_blank" title="LinkedIn" style="font-size:13px;text-decoration:none;">💼</a>` : ''}
+        <div class="mkt-bar-wrap">
+          <div class="mkt-bar"><div class="mkt-bar-fill" style="width:${mktScore*10}%;background:${mktBarColor(mktScore)}"></div></div>
+          <span style="font-size:12px;color:var(--text-dim)">${mktScore}</span>
         </div>
       </td>
-      <td><div class="score-badge score-${l.aiScore}">${l.aiScore}</div></td>
-      <td>
-        ${l.hasWebsite
-          ? `<span class="website-tag yes">🌐 Has site</span>`
-          : `<span class="website-tag no">🚫 No site</span>`
-        }
-      </td>
-      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${escHtml(l.phone || '—')}</td>
-      <td style="font-family:var(--font-mono);font-size:11px;">
-        ${l.rating ? `⭐ ${l.rating} <span style="color:var(--text-muted)">(${l.reviewCount})</span>` : '—'}
-      </td>
-      <td><span class="status-badge status-${l.status||'new'}">${l.status||'new'}</span></td>
-      <td>
-        <div class="actions-cell">
-          <button class="btn btn-outline btn-sm" onclick="openModal('${l.id}')">View</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteLead('${l.id}')">✕</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
+      <td class="td-dim">${escHtml(lead.phone || '–')}</td>
+      <td class="td-dim truncate" style="max-width:140px;">${lead.email ? `<a href="mailto:${escHtml(lead.email)}" onclick="event.stopPropagation()" style="color:var(--blue)">${escHtml(lead.email)}</a>` : '–'}</td>
+      <td class="td-dim">${lead.instagram || lead.instagramHandle ? `@${escHtml((lead.instagram||lead.instagramHandle).replace('@',''))}` : '–'}</td>
+      <td class="td-dim">${lead.linkedin ? `<a href="${escHtml(lead.linkedin)}" target="_blank" onclick="event.stopPropagation()" style="color:var(--blue)">Link</a>` : '–'}</td>
+      <td>${statusChipHtml(status)}</td>
+      <td><div class="td-actions" onclick="event.stopPropagation()">
+        <button class="btn btn-ghost btn-xs" onclick="openLeadModal('${id}')">View</button>
+        <button class="btn btn-red btn-xs" onclick="deleteLead('${id}')">✕</button>
+      </div></td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
-function renderHotLeads() {
-  const tbody = document.getElementById('hot-tbody');
-  const hotLeads = allLeads
-    .filter(l => !l.hasWebsite && l.aiScore >= 7)
-    .sort((a,b) => (b.aiScore||0) - (a.aiScore||0));
-
-  if (!hotLeads.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">
-      <div class="empty-icon">🔥</div>
-      <div class="empty-title">No hot leads yet</div>
-      <div class="empty-sub">Hot leads are businesses with no website and AI score ≥ 7</div>
-    </div></td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = hotLeads.map(l => `
-    <tr>
-      <td>
-        <div class="biz-name">${escHtml(l.name)}</div>
-        <div class="biz-cat">${escHtml(l.city)} · ${escHtml(l.category)}</div>
-        <div style="display:flex;gap:4px;margin-top:4px;">
-          ${l.email ? `<span title="${escHtml(l.email)}" style="font-size:13px;cursor:default;">✉️</span>` : ''}
-          ${l.instagram ? `<a href="${escHtml(l.instagram)}" target="_blank" style="font-size:13px;text-decoration:none;">📸</a>` : ''}
-          ${l.facebook ? `<a href="${escHtml(l.facebook)}" target="_blank" style="font-size:13px;text-decoration:none;">🔵</a>` : ''}
-          ${l.linkedin ? `<a href="${escHtml(l.linkedin)}" target="_blank" style="font-size:13px;text-decoration:none;">💼</a>` : ''}
-        </div>
-      </td>
-      <td><div class="score-badge score-${l.aiScore}">${l.aiScore}</div></td>
-      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${escHtml(l.phone || '—')}</td>
-      <td style="font-family:var(--font-mono);font-size:11px;">
-        ${l.rating ? `⭐ ${l.rating} (${l.reviewCount})` : '—'}
-      </td>
-      <td style="font-size:11px;color:#93c5fd;max-width:200px;">${escHtml(l.reviewInsight || l.aiReasoning || '—')}</td>
-      <td><span class="status-badge status-${l.status||'new'}">${l.status||'new'}</span></td>
-      <td>
-        <div class="actions-cell">
-          <button class="btn btn-primary btn-sm" onclick="openModal('${l.id}')">📩 View & Copy Message</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
-}
-
-function renderRecentLeads() {
-  const container = document.getElementById('recent-leads-body');
-  const recent = allLeads.slice(0, 5);
-
-  if (!recent.length) {
-    container.innerHTML = `<div class="empty-state" style="padding:30px 20px;">
-      <div class="empty-icon">🔍</div>
-      <div class="empty-title">No leads yet</div>
-      <div class="empty-sub">Start scraping to see results here</div>
-    </div>`;
-    return;
-  }
-
-  container.innerHTML = `<table class="leads-table">
-    <thead><tr>
-      <th>Business</th><th>Score</th><th>Website</th><th>Status</th><th></th>
-    </tr></thead>
-    <tbody>
-    ${recent.map(l => `<tr>
-      <td>
-        <div class="biz-name">${escHtml(l.name)}</div>
-        <div class="biz-cat">${escHtml(l.category)}</div>
-      </td>
-      <td><div class="score-badge score-${l.aiScore}">${l.aiScore}</div></td>
-      <td>${l.hasWebsite ? '<span class="website-tag yes">🌐 Has site</span>' : '<span class="website-tag no">🚫 No site</span>'}</td>
-      <td><span class="status-badge status-${l.status||'new'}">${l.status||'new'}</span></td>
-      <td><button class="btn btn-outline btn-sm" onclick="openModal('${l.id}')">View</button></td>
-    </tr>`).join('')}
-    </tbody>
-  </table>`;
-}
+// Filter tabs
+document.querySelectorAll('.filter-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    state.filterTab = tab.dataset.filter;
+    renderLeadsTable();
+  });
+});
 
 // ============================================================
-//  CHARTS
+//  LEAD MODAL
 // ============================================================
-function renderCategoryChart(byCategory) {
-  const el = document.getElementById('category-chart');
-  const entries = Object.entries(byCategory).sort((a,b) => b[1]-a[1]).slice(0, 10);
-  if (!entries.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:12px;">No data yet.</div>'; return; }
-  const max = entries[0][1];
-  el.innerHTML = entries.map(([cat, count]) => `
-    <div class="chart-bar-row">
-      <div class="chart-bar-label">${escHtml(cat)}</div>
-      <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(count/max*100).toFixed(0)}%"></div></div>
-      <div class="chart-bar-count">${count}</div>
-    </div>
-  `).join('');
-}
+function openLeadModal(id) {
+  const lead = state.allLeads.find(l => (l.id || l._id) === id);
+  if (!lead) { showToast('error', '❌', 'Lead not found.'); return; }
+  state.editingLeadId = id;
 
-function renderPipelineChart(data) {
-  const el = document.getElementById('pipeline-chart');
-  const stages = [
-    { label: 'Total Leads', val: data.total || 0, color: '#f0a500' },
-    { label: 'No Website', val: data.noWebsite || 0, color: '#22c55e' },
-    { label: 'High Score (7+)', val: data.highScore || 0, color: '#3b82f6' },
-    { label: 'Contacted', val: data.contacted || 0, color: '#f0a500' },
-    { label: 'Replied', val: data.replied || 0, color: '#22c55e' },
-    { label: 'Converted', val: data.converted || 0, color: '#a855f7' },
-  ];
-  const max = data.total || 1;
-  el.innerHTML = stages.map(s => `
-    <div class="chart-bar-row">
-      <div class="chart-bar-label">${s.label}</div>
-      <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${(s.val/max*100).toFixed(0)}%;background:${s.color}"></div></div>
-      <div class="chart-bar-count">${s.val}</div>
-    </div>
-  `).join('');
-}
+  const name = lead.businessName || lead.name || 'Unknown';
+  const score = lead.aiScore ?? lead.score ?? 0;
+  const mktScore = lead.marketingScore ?? lead.mktScore ?? 0;
+  const status = lead.status || 'new';
+  const wsStatus = lead.websiteStatus || 'none';
 
-// ============================================================
-//  LEAD DETAIL MODAL
-// ============================================================
-function openModal(leadId) {
-  const lead = allLeads.find(l => l.id === leadId);
-  if (!lead) return;
-  activeLeadId = leadId;
-
-  document.getElementById('modal-title').textContent = lead.name;
-  document.getElementById('modal-sub').textContent = `${lead.category} · ${lead.city} · Scraped ${new Date(lead.scrapedAt).toLocaleDateString()}`;
+  document.getElementById('modal-biz-name').textContent = name;
+  document.getElementById('modal-biz-sub').textContent =
+    `${lead.category || ''}${lead.city ? ' · ' + lead.city : ''}${lead.country ? ' · ' + lead.country : ''}`;
 
   const body = document.getElementById('modal-body');
   body.innerHTML = `
-    <div class="detail-grid">
-      <div class="detail-row">
-        <div class="detail-label">Phone</div>
-        <div class="detail-value">${lead.phone ? `<a href="tel:${lead.phone}">${escHtml(lead.phone)}</a>` : '—'}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Address</div>
-        <div class="detail-value">${escHtml(lead.address || '—')}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Rating</div>
-        <div class="detail-value">⭐ ${lead.rating || '—'} (${lead.reviewCount || 0} reviews)</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Website</div>
-        <div class="detail-value">${lead.website ? `<a href="${lead.website}" target="_blank">${escHtml(lead.website)}</a>` : '🚫 No website'}</div>
+    <!-- Scores -->
+    <div>
+      <div class="section-label">Scores</div>
+      <div class="score-badges-row">
+        <div class="score-large ${scoreBadgeClass(score)}" style="font-size:15px;padding:8px 18px;">
+          🤖 AI Score <strong>${score}/10</strong>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;max-width:200px;">
+          <div style="font-size:12px;color:var(--text-dim)">Marketing Score: <strong style="color:var(--text)">${mktScore}/10</strong></div>
+          <div class="mkt-bar" style="max-width:100%;height:6px;">
+            <div class="mkt-bar-fill" style="width:${mktScore*10}%;background:${mktBarColor(mktScore)};height:6px;"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    ${lead.aiReasoning ? `<div class="ai-reasoning">🤖 <strong>AI Analysis:</strong> ${escHtml(lead.aiReasoning)}</div>` : ''}
-    ${lead.reviewInsight ? `<div class="review-insight">💬 <strong>Review Insight:</strong> ${escHtml(lead.reviewInsight)}</div>` : ''}
-
-    <!-- Contact info panel -->
-    <div style="background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:16px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">📬 Contact Info</div>
-        <button class="btn btn-outline btn-sm" id="enrich-btn-${leadId}" onclick="enrichLead('${leadId}')">
-          ${lead.enrichedAt ? '🔄 Re-search' : '🔍 Find Contact Info'}
-        </button>
-      </div>
-      <div class="detail-grid" style="gap:10px;">
-        <div class="detail-row">
+    <!-- Contact details -->
+    <div>
+      <div class="section-label">Contact & Location</div>
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">Phone</div>
+          <div class="detail-value">${lead.phone ? `<a href="tel:${escHtml(lead.phone)}">${escHtml(lead.phone)}</a>` : '<span class="text-dim">–</span>'}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Address</div>
+          <div class="detail-value">${escHtml(lead.address || lead.fullAddress || '–')}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Rating</div>
+          <div class="detail-value">${lead.rating ? `⭐ ${lead.rating}` : '–'}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Google Maps</div>
+          <div class="detail-value">${lead.mapsUrl || lead.googleMapsUrl ? `<a href="${escHtml(lead.mapsUrl||lead.googleMapsUrl)}" target="_blank">📍 Open Maps</a>` : '–'}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Website</div>
+          <div class="detail-value">
+            ${lead.website ? `<a href="${escHtml(lead.website)}" target="_blank">${escHtml(lead.website)}</a>` : ''}
+            ${wsBadgeHtml(wsStatus)}
+          </div>
+        </div>
+        <div class="detail-item">
           <div class="detail-label">Email</div>
-          <div class="detail-value" id="ci-email-${leadId}">
-            ${lead.email
-              ? `<a href="mailto:${escHtml(lead.email)}" style="color:var(--green)">${escHtml(lead.email)}</a>`
-              : `<span style="color:var(--text-muted);font-size:11px;">${lead.enrichedAt ? 'Not found' : 'Click Find Contact Info'}</span>`}
-          </div>
+          <div class="detail-value">${lead.email ? `<a href="mailto:${escHtml(lead.email)}">${escHtml(lead.email)}</a>` : '<span class="text-dim">–</span>'}</div>
         </div>
-        <div class="detail-row">
+        <div class="detail-item">
           <div class="detail-label">Instagram</div>
-          <div class="detail-value" id="ci-ig-${leadId}">
-            ${lead.instagram
-              ? `<a href="${escHtml(lead.instagram)}" target="_blank" style="color:#e1306c">📸 ${escHtml(lead.instagram.replace('https://www.instagram.com/','@').replace('https://instagram.com/','@'))}</a>`
-              : `<span style="color:var(--text-muted);font-size:11px;">${lead.enrichedAt ? 'Not found' : '—'}</span>`}
-          </div>
+          <div class="detail-value">${lead.instagram || lead.instagramHandle
+            ? `<a href="https://instagram.com/${escHtml((lead.instagram||lead.instagramHandle).replace('@',''))}" target="_blank">@${escHtml((lead.instagram||lead.instagramHandle).replace('@',''))}</a>`
+            : '<span class="text-dim">–</span>'}</div>
         </div>
-        <div class="detail-row">
-          <div class="detail-label">Facebook</div>
-          <div class="detail-value" id="ci-fb-${leadId}">
-            ${lead.facebook
-              ? `<a href="${escHtml(lead.facebook)}" target="_blank" style="color:#1877f2">🔵 ${escHtml(lead.facebook.replace('https://www.facebook.com/','').replace('https://facebook.com/',''))}</a>`
-              : `<span style="color:var(--text-muted);font-size:11px;">${lead.enrichedAt ? 'Not found' : '—'}</span>`}
-          </div>
-        </div>
-        <div class="detail-row">
+        <div class="detail-item">
           <div class="detail-label">LinkedIn</div>
-          <div class="detail-value" id="ci-li-${leadId}">
-            ${lead.linkedin
-              ? `<a href="${escHtml(lead.linkedin)}" target="_blank" style="color:#0a66c2">💼 ${escHtml(lead.linkedin.replace('https://www.linkedin.com/company/','').replace('https://linkedin.com/company/',''))}</a>`
-              : `<span style="color:var(--text-muted);font-size:11px;">${lead.enrichedAt ? 'Not found' : '—'}</span>`}
-          </div>
+          <div class="detail-value">${lead.linkedin ? `<a href="${escHtml(lead.linkedin)}" target="_blank">LinkedIn Profile</a>` : '<span class="text-dim">–</span>'}</div>
         </div>
       </div>
-      ${lead.enrichedAt ? `<div style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted);margin-top:10px;">Last searched: ${new Date(lead.enrichedAt).toLocaleString()}</div>` : ''}
     </div>
 
-    ${lead.outreachMessage ? `
-    <div class="detail-row">
-      <div class="detail-label" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>✉️ Outreach Message</span>
-        <div style="display:flex;gap:6px;">
-          <button class="btn btn-outline btn-sm" onclick="copyMessage('${leadId}')">📋 Copy</button>
-          <button class="btn btn-outline btn-sm" id="regen-btn" onclick="regenMessage('${leadId}')">🔄 Regenerate</button>
+    <!-- Owner -->
+    ${lead.ownerName || lead.ownerLinkedin ? `
+    <div>
+      <div class="section-label">Owner</div>
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">Owner Name</div>
+          <div class="detail-value">${escHtml(lead.ownerName || '–')}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Owner LinkedIn</div>
+          <div class="detail-value">${lead.ownerLinkedin ? `<a href="${escHtml(lead.ownerLinkedin)}" target="_blank">LinkedIn</a>` : '–'}</div>
         </div>
       </div>
-      <textarea class="message-textarea" id="msg-textarea-${leadId}">${escHtml(lead.outreachMessage)}</textarea>
-    </div>
-    ` : lead.hasWebsite ? `<div style="color:var(--text-muted);font-size:12px;padding:12px;text-align:center;">This business has a website — not a lead for website services.</div>` : ''}
+    </div>` : ''}
 
-    <div class="detail-grid">
-      <div class="detail-row">
-        <div class="detail-label">Status</div>
-        <select class="status-select" id="modal-status" onchange="updateStatus('${leadId}', this.value)">
-          <option value="new" ${lead.status==='new'?'selected':''}>🆕 New</option>
-          <option value="contacted" ${lead.status==='contacted'?'selected':''}>📤 Contacted</option>
-          <option value="replied" ${lead.status==='replied'?'selected':''}>💬 Replied</option>
-          <option value="converted" ${lead.status==='converted'?'selected':''}>✅ Converted</option>
-          <option value="skipped" ${lead.status==='skipped'?'selected':''}>⏭ Skipped</option>
-        </select>
+    <!-- AI Reasoning -->
+    ${lead.aiReasoning || lead.reasoning ? `
+    <div>
+      <div class="section-label">AI Analysis</div>
+      <div class="ai-reasoning">
+        <div class="ai-reasoning-label">🤖 AI Reasoning</div>
+        ${escHtml(lead.aiReasoning || lead.reasoning)}
       </div>
-      <div class="detail-row">
-        <div class="detail-label">AI Score</div>
-        <div class="detail-value"><span class="score-badge score-${lead.aiScore}" style="width:auto;padding:4px 12px;border-radius:8px;">${lead.aiScore}/10</span></div>
+    </div>` : ''}
+
+    <!-- Outreach -->
+    <div>
+      <div class="section-label">Outreach Message</div>
+      <div class="outreach-wrap">
+        <textarea id="modal-outreach" rows="4">${escHtml(lead.outreachMessage || lead.message || '')}</textarea>
+        <div class="outreach-actions">
+          <button class="btn btn-ghost btn-sm" onclick="copyOutreach()">📋 Copy</button>
+          <span style="font-size:12px;color:var(--text-muted);align-self:center">Edit to customize</span>
+        </div>
       </div>
     </div>
 
-    <div class="detail-row">
-      <div class="detail-label">Notes</div>
-      <textarea class="notes-textarea" id="modal-notes" placeholder="Add your notes here...">${escHtml(lead.notes || '')}</textarea>
+    <!-- Status -->
+    <div>
+      <div class="section-label">Pipeline Status</div>
+      <div class="status-select" id="modal-status-select">
+        ${['new','contacted','replied','converted','skipped'].map(s =>
+          `<button class="status-opt ${status===s?'sel':''}" onclick="selectModalStatus('${s}')">${capitalize(s)}</button>`
+        ).join('')}
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div>
+      <div class="section-label">Notes</div>
+      <textarea id="modal-notes" rows="3" placeholder="Add internal notes…">${escHtml(lead.notes || '')}</textarea>
     </div>
   `;
 
-  document.getElementById('modal-footer').innerHTML = `
-    <button class="btn btn-outline" onclick="closeModal()">Close</button>
-    <button class="btn btn-danger btn-sm" onclick="deleteLead('${leadId}');closeModal();">Delete Lead</button>
-    <button class="btn btn-primary" onclick="saveLeadFromModal('${leadId}')">💾 Save Changes</button>
-  `;
-
-  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('lead-modal').classList.add('open');
 }
 
-function closeModal(e) {
-  if (e && e.target !== document.getElementById('modal-overlay')) return;
-  document.getElementById('modal-overlay').classList.remove('open');
-  activeLeadId = null;
+function closeLeadModal() {
+  document.getElementById('lead-modal').classList.remove('open');
+  state.editingLeadId = null;
 }
 
-async function saveLeadFromModal(leadId) {
-  const notes = document.getElementById('modal-notes')?.value || '';
-  const status = document.getElementById('modal-status')?.value || 'new';
-  const msgEl = document.getElementById(`msg-textarea-${leadId}`);
-  const outreachMessage = msgEl ? msgEl.value : undefined;
+function selectModalStatus(s) {
+  document.querySelectorAll('#modal-status-select .status-opt').forEach(b => b.classList.remove('sel'));
+  document.querySelector(`#modal-status-select .status-opt[onclick="selectModalStatus('${s}')"]`).classList.add('sel');
+}
 
-  const body = { notes, status };
-  if (outreachMessage !== undefined) body.outreachMessage = outreachMessage;
+function copyOutreach() {
+  const txt = document.getElementById('modal-outreach').value;
+  navigator.clipboard.writeText(txt).then(() => showToast('success', '📋', 'Copied to clipboard!'));
+}
 
+async function saveLeadChanges() {
+  const id = state.editingLeadId;
+  if (!id) return;
+  const statusEl = document.querySelector('#modal-status-select .status-opt.sel');
+  const status = statusEl ? statusEl.textContent.toLowerCase() : 'new';
+  const outreachMessage = document.getElementById('modal-outreach').value;
+  const notes = document.getElementById('modal-notes').value;
+
+  const payload = { status, outreachMessage, notes };
   try {
-    await fetch(`/api/leads/${leadId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const lead = allLeads.find(l => l.id === leadId);
-    if (lead) { lead.notes = notes; lead.status = status; if (outreachMessage) lead.outreachMessage = outreachMessage; }
-    toast('Lead saved!', 'success');
-    closeModal();
-    renderLeads();
-    renderHotLeads();
-  } catch (_) {
-    toast('Save failed.', 'error');
+    const res = await apiFetch(`/api/leads/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const updated = await res.json();
+    const idx = state.allLeads.findIndex(l => (l.id || l._id) === id);
+    if (idx >= 0) state.allLeads[idx] = { ...state.allLeads[idx], ...updated };
+    showToast('success', '✅', 'Lead updated successfully.');
+    closeLeadModal();
+    if (state.currentPage === 'all-leads') renderLeadsTable();
+  } catch (e) {
+    // Optimistic update on network error
+    const idx = state.allLeads.findIndex(l => (l.id || l._id) === id);
+    if (idx >= 0) state.allLeads[idx] = { ...state.allLeads[idx], ...payload };
+    showToast('warn', '⚠️', 'Saved locally (server unreachable).');
+    closeLeadModal();
+    if (state.currentPage === 'all-leads') renderLeadsTable();
   }
 }
 
-async function updateStatus(leadId, status) {
-  try {
-    await fetch(`/api/leads/${leadId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status })
-    });
-    const lead = allLeads.find(l => l.id === leadId);
-    if (lead) lead.status = status;
-  } catch (_) {}
+async function deleteLeadFromModal() {
+  const id = state.editingLeadId;
+  if (!id) return;
+  if (!confirm('Delete this lead permanently?')) return;
+  await deleteLead(id);
+  closeLeadModal();
 }
 
-async function enrichLead(leadId) {
-  const btn = document.getElementById(`enrich-btn-${leadId}`);
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Searching...'; }
-  toast('Searching for contact info — this takes ~15 seconds...', 'info');
+async function deleteLead(id) {
   try {
-    await fetch(`/api/leads/${leadId}/enrich`, { method: 'POST' });
-    // Result comes back via SSE lead_enriched event which re-opens the modal
-  } catch (_) {
-    toast('Search failed. Check the activity log.', 'error');
-    if (btn) { btn.disabled = false; btn.innerHTML = '🔍 Find Contact Info'; }
-  }
+    await apiFetch(`/api/leads/${id}`, { method: 'DELETE' });
+  } catch {}
+  state.allLeads = state.allLeads.filter(l => (l.id || l._id) !== id);
+  showToast('info', '🗑', 'Lead deleted.');
+  updateBadge();
+  if (state.currentPage === 'all-leads') renderLeadsTable();
 }
 
-function copyMessage(leadId) {
-  const el = document.getElementById(`msg-textarea-${leadId}`);
-  if (!el) return;
-  navigator.clipboard.writeText(el.value).then(() => toast('Message copied to clipboard! 📋', 'success'));
-}
-
-async function regenMessage(leadId) {
-  const btn = document.getElementById('regen-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Generating...'; }
-
+// ============================================================
+//  HISTORY
+// ============================================================
+async function loadSearchHistory() {
   try {
-    const res = await fetch(`/api/leads/${leadId}/regenerate`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
-    const data = await res.json();
-    if (data.success) {
-      const el = document.getElementById(`msg-textarea-${leadId}`);
-      if (el) el.value = data.outreachMessage;
-      const lead = allLeads.find(l => l.id === leadId);
-      if (lead) lead.outreachMessage = data.outreachMessage;
-      toast('New message generated!', 'success');
+    const res = await apiFetch('/api/searches');
+    if (res.ok) {
+      const data = await res.json();
+      state.allSearches = data;
     }
-  } catch (_) { toast('Regeneration failed.', 'error'); }
-  finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '🔄 Regenerate'; }
+  } catch {}
+  renderHistory();
+}
+
+function renderHistory() {
+  const grid = document.getElementById('history-grid');
+  const empty = document.getElementById('history-empty');
+  if (!state.allSearches.length) {
+    grid.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.innerHTML = '';
+  state.allSearches.forEach(search => {
+    const id = search.id || search._id;
+    const status = search.status || 'done';
+    const leadsCount = search.leadsFound ?? search.totalLeads ?? 0;
+    const date = search.createdAt ? new Date(search.createdAt).toLocaleString() : '–';
+    const card = document.createElement('div');
+    card.className = 'history-card';
+    card.onclick = () => openHistoryModal(id);
+    card.innerHTML = `
+      <div class="history-card-header">
+        <div>
+          <div class="history-card-title">${escHtml(search.category || '–')} in ${escHtml(search.location || '–')}</div>
+          <div class="history-card-date">${date}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:flex-start">
+          ${runBadgeHtml(status)}
+          <button class="btn btn-red btn-xs" onclick="event.stopPropagation();deleteSearch('${id}')">✕</button>
+        </div>
+      </div>
+      <div class="history-card-meta">
+        <div class="history-meta-item">
+          <div class="history-meta-label">Country</div>
+          <div class="history-meta-value">${escHtml(search.country || '–')}</div>
+        </div>
+        <div class="history-meta-item">
+          <div class="history-meta-label">Radius</div>
+          <div class="history-meta-value">${escHtml(search.radius || '–')}</div>
+        </div>
+        <div class="history-meta-item">
+          <div class="history-meta-label">Count</div>
+          <div class="history-meta-value">${search.count || '–'}</div>
+        </div>
+        <div class="history-meta-item">
+          <div class="history-meta-label">Leads Found</div>
+          <div class="history-meta-value" style="color:var(--amber)">${leadsCount}</div>
+        </div>
+      </div>
+      ${status === 'running' ? `<div style="margin-top:12px;">
+        <button class="btn btn-red btn-sm" onclick="event.stopPropagation();stopSearchById('${id}')">■ Stop</button>
+      </div>` : ''}
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <a class="btn btn-ghost btn-xs" href="/api/export/${id}/excel" target="_blank" onclick="event.stopPropagation()">📥 Excel</a>
+        <a class="btn btn-ghost btn-xs" href="/api/export/${id}/pdf" target="_blank" onclick="event.stopPropagation()">📄 PDF</a>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+async function deleteSearch(id) {
+  if (!confirm('Delete this search and its leads?')) return;
+  try {
+    await apiFetch(`/api/searches/${id}`, { method: 'DELETE' });
+  } catch {}
+  state.allSearches = state.allSearches.filter(s => (s.id || s._id) !== id);
+  showToast('info', '🗑', 'Search deleted.');
+  renderHistory();
+}
+
+async function stopSearchById(id) {
+  try {
+    await apiFetch(`/api/searches/${id}/stop`, { method: 'POST' });
+    showToast('info', 'ℹ️', 'Stop requested.');
+  } catch (e) {
+    showToast('error', '❌', `Failed: ${e.message}`);
   }
 }
 
-// ============================================================
-//  LEAD ACTIONS
-// ============================================================
-async function deleteLead(leadId) {
-  await fetch(`/api/leads/${leadId}`, { method: 'DELETE' });
-  allLeads = allLeads.filter(l => l.id !== leadId);
-  renderLeads();
-  renderHotLeads();
-  renderRecentLeads();
-  updateScraperStats();
-  toast('Lead deleted.', 'info');
+// History modal — show leads of that search
+async function openHistoryModal(searchId) {
+  const search = state.allSearches.find(s => (s.id || s._id) === searchId);
+  document.getElementById('hm-title').textContent =
+    `${search ? search.category : ''} — ${search ? search.location : ''} results`;
+  document.getElementById('hm-sub').textContent = search
+    ? `${new Date(search.createdAt||Date.now()).toLocaleString()} · ${search.status || 'done'}`
+    : '';
+
+  // Try to load leads from API
+  let leads = state.allLeads.filter(l => l.searchId === searchId);
+  try {
+    const res = await apiFetch(`/api/searches/${searchId}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.leads && Array.isArray(data.leads)) leads = data.leads;
+    }
+  } catch {}
+
+  const tbody = document.getElementById('hm-tbody');
+  const empty = document.getElementById('hm-empty');
+  if (!leads.length) {
+    tbody.innerHTML = '';
+    empty.style.display = 'flex';
+  } else {
+    empty.style.display = 'none';
+    tbody.innerHTML = '';
+    leads.forEach(lead => {
+      const id = lead.id || lead._id;
+      const score = lead.aiScore ?? lead.score ?? 0;
+      const wsStatus = lead.websiteStatus || 'none';
+      const status = lead.status || 'new';
+      const tr = document.createElement('tr');
+      tr.onclick = () => { closeHistoryModal(); openLeadModal(id); };
+      tr.innerHTML = `
+        <td><div class="td-name">${escHtml(lead.businessName||lead.name||'–')}</div></td>
+        <td><div class="${scoreBadgeClass(score)} score-badge">${score}</div></td>
+        <td>${wsBadgeHtml(wsStatus)}</td>
+        <td class="td-dim">${escHtml(lead.phone||'–')}</td>
+        <td class="td-dim">${escHtml(lead.email||'–')}</td>
+        <td>${statusChipHtml(status)}</td>
+        <td><button class="btn btn-ghost btn-xs" onclick="event.stopPropagation();closeHistoryModal();openLeadModal('${id}')">View</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+  document.getElementById('history-modal').classList.add('open');
 }
 
-async function clearAllLeads() {
-  if (!confirm('Delete ALL leads? This cannot be undone.')) return;
-  await fetch('/api/leads', { method: 'DELETE' });
-  allLeads = [];
-  renderLeads();
-  renderHotLeads();
-  renderRecentLeads();
-  updateScraperStats();
-  toast('All leads cleared.', 'info');
-}
-
-function exportCSV() {
-  window.open('/api/export?noWebsiteOnly=false', '_blank');
-  toast('Exporting CSV...', 'info');
+function closeHistoryModal() {
+  document.getElementById('history-modal').classList.remove('open');
 }
 
 // ============================================================
-//  UTILS
+//  ANALYTICS
 // ============================================================
+async function fetchStats() {
+  try {
+    const res = await apiFetch('/api/stats');
+    if (res.ok) return await res.json();
+  } catch {}
+  return null;
+}
+
+async function renderAnalytics() {
+  const serverStats = await fetchStats();
+  const leads = state.allLeads;
+
+  // Compute from local state
+  const total = leads.length;
+  const noWebsite = leads.filter(l => !l.websiteStatus || l.websiteStatus === 'none').length;
+  const score7 = leads.filter(l => (l.aiScore ?? l.score ?? 0) >= 7).length;
+  const hasEmail = leads.filter(l => l.email).length;
+  const hasIg = leads.filter(l => l.instagram || l.instagramHandle).length;
+  const contacted = leads.filter(l => l.status === 'contacted').length;
+  const converted = leads.filter(l => l.status === 'converted').length;
+  const replied = leads.filter(l => l.status === 'replied').length;
+
+  // Stat cards
+  const stats = serverStats || { total, noWebsite, score7, hasEmail, hasIg, contacted, converted };
+  const cards = [
+    { label: 'Total Leads', value: stats.total ?? total, sub: 'all time', color: 'var(--text)' },
+    { label: 'No Website', value: stats.noWebsite ?? noWebsite, sub: 'hot prospects', color: 'var(--red)' },
+    { label: 'Score 7+', value: stats.score7 ?? score7, sub: 'high quality', color: 'var(--green)' },
+    { label: 'Has Email', value: stats.hasEmail ?? hasEmail, sub: 'contactable', color: 'var(--blue)' },
+    { label: 'Has Instagram', value: stats.hasIg ?? hasIg, sub: 'social active', color: 'var(--orange)' },
+    { label: 'Contacted', value: stats.contacted ?? contacted, sub: 'in pipeline', color: 'var(--amber)' },
+    { label: 'Converted', value: stats.converted ?? converted, sub: 'won clients', color: 'var(--green)' },
+  ];
+
+  const statCardsEl = document.getElementById('stat-cards');
+  statCardsEl.innerHTML = cards.map(c => `
+    <div class="stat-card">
+      <div class="stat-card-label">${c.label}</div>
+      <div class="stat-card-value" style="color:${c.color}">${c.value}</div>
+      <div class="stat-card-sub">${c.sub}</div>
+    </div>
+  `).join('');
+
+  // Website status chart
+  const wsCounts = {};
+  const wsLabels = { none: '🚫 No Website', social_only: '📱 Social Only', linktree: '🔗 Linktree', menu_only: '📋 Menu Only', outdated: '⚠️ Outdated', basic: '🔹 Basic', good: '✅ Good' };
+  const wsColors = { none: 'var(--red)', social_only: 'var(--orange)', linktree: 'var(--orange)', menu_only: 'var(--yellow)', outdated: 'var(--yellow)', basic: 'var(--blue)', good: 'var(--gray)' };
+  leads.forEach(l => {
+    const k = l.websiteStatus || 'none';
+    wsCounts[k] = (wsCounts[k] || 0) + 1;
+  });
+  const wsMax = Math.max(...Object.values(wsCounts), 1);
+  document.getElementById('chart-website').innerHTML = Object.entries(wsLabels).map(([k, label]) => {
+    const v = wsCounts[k] || 0;
+    const pct = Math.round((v / wsMax) * 100);
+    return `<div class="bar-row">
+      <div class="bar-label">${label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${wsColors[k]||'var(--blue)'}">
+        ${v > 0 ? `<span class="bar-val">${v}</span>` : ''}
+      </div></div>
+    </div>`;
+  }).join('') || '<div class="text-dim" style="font-size:13px;">No data yet</div>';
+
+  // Score range chart
+  const scoreBuckets = { '9–10': 0, '7–8': 0, '5–6': 0, '1–4': 0 };
+  leads.forEach(l => {
+    const s = l.aiScore ?? l.score ?? 0;
+    if (s >= 9) scoreBuckets['9–10']++;
+    else if (s >= 7) scoreBuckets['7–8']++;
+    else if (s >= 5) scoreBuckets['5–6']++;
+    else scoreBuckets['1–4']++;
+  });
+  const scoreMax = Math.max(...Object.values(scoreBuckets), 1);
+  const scoreColors = { '9–10': 'var(--green)', '7–8': 'var(--amber)', '5–6': 'var(--blue)', '1–4': 'var(--red)' };
+  document.getElementById('chart-score').innerHTML = Object.entries(scoreBuckets).map(([label, v]) => {
+    const pct = Math.round((v / scoreMax) * 100);
+    return `<div class="bar-row">
+      <div class="bar-label">${label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${scoreColors[label]}">
+        ${v > 0 ? `<span class="bar-val">${v}</span>` : ''}
+      </div></div>
+    </div>`;
+  }).join('') || '<div class="text-dim" style="font-size:13px;">No data yet</div>';
+
+  // Funnel
+  const funnelSteps = [
+    { label: 'Total Leads', value: total, color: 'var(--blue)' },
+    { label: 'Contacted', value: contacted, color: 'var(--amber)' },
+    { label: 'Replied', value: replied, color: '#a855f7' },
+    { label: 'Converted', value: converted, color: 'var(--green)' },
+  ];
+  const funnelMax = Math.max(total, 1);
+  document.getElementById('chart-funnel').innerHTML = funnelSteps.map((step, i) => {
+    const pct = Math.max(Math.round((step.value / funnelMax) * 100), step.value > 0 ? 10 : 2);
+    const marginPct = Math.round((100 - pct) / 2);
+    return `<div class="funnel-step" style="width:${pct}%;margin-left:${marginPct}%;background:${step.color};">
+      ${step.value}
+      <span class="funnel-step-label">${step.label} (${step.value})</span>
+    </div>`;
+  }).join('') || '<div class="text-dim">No data yet</div>';
+}
+
+// ============================================================
+//  EXPORT
+// ============================================================
+function exportAll(format) {
+  // Export all leads (no specific searchId)
+  const ids = [...new Set(state.allLeads.map(l => l.searchId).filter(Boolean))];
+  if (ids.length === 0) {
+    showToast('warn', '⚠️', 'No leads to export.');
+    return;
+  }
+  window.open(`/api/export/${ids[0]}/${format}`, '_blank');
+}
+
+// ============================================================
+//  HELPERS / UTILITIES
+// ============================================================
+function apiFetch(path, options = {}) {
+  return fetch(path, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+}
+
 function escHtml(str) {
   if (!str) return '';
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-function toast(msg, type = 'info') {
-  const icons = { success: '✅', error: '❌', info: '💡' };
-  const container = document.getElementById('toast-container');
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.innerHTML = `<span>${icons[type]||'💡'}</span><span>${msg}</span>`;
-  container.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
+function capitalize(str) {
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
 }
+
+function scoreBadgeClass(score) {
+  if (score >= 9) return 'score-green';
+  if (score >= 7) return 'score-amber';
+  if (score >= 5) return 'score-blue';
+  return 'score-red';
+}
+
+function wsBadgeHtml(status) {
+  const map = {
+    none:        ['ws-none',        '🚫 No Website'],
+    social_only: ['ws-social_only', '📱 Social Only'],
+    linktree:    ['ws-linktree',    '🔗 Linktree Only'],
+    menu_only:   ['ws-menu_only',   '📋 Menu Only'],
+    outdated:    ['ws-outdated',    '⚠️ Outdated'],
+    basic:       ['ws-basic',       '🔹 Basic Site'],
+    good:        ['ws-good',        '✅ Good Site'],
+  };
+  const [cls, label] = map[status] || map['none'];
+  return `<span class="ws-badge ${cls}">${label}</span>`;
+}
+
+function statusChipHtml(status) {
+  const map = {
+    new:       'status-new',
+    contacted: 'status-contacted',
+    replied:   'status-replied',
+    converted: 'status-converted',
+    skipped:   'status-skipped',
+  };
+  return `<span class="status-chip ${map[status]||'status-new'}">${capitalize(status||'new')}</span>`;
+}
+
+function runBadgeHtml(status) {
+  const map = {
+    done:    ['run-done',    '✅ Done'],
+    running: ['run-running', '⟳ Running'],
+    error:   ['run-error',   '❌ Error'],
+    stopped: ['run-stopped', '■ Stopped'],
+  };
+  const [cls, label] = map[status] || ['run-done', status];
+  return `<span class="run-badge ${cls}">${label}</span>`;
+}
+
+function mktBarColor(score) {
+  if (score >= 8) return 'var(--green)';
+  if (score >= 6) return 'var(--amber)';
+  if (score >= 4) return 'var(--blue)';
+  return 'var(--red)';
+}
+
+function updateBadge() {
+  document.getElementById('leads-count-badge').textContent = state.allLeads.length;
+}
+
+// ============================================================
+//  TOAST
+// ============================================================
+function showToast(type, icon, message) {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `<span class="toast-icon">${icon}</span><span class="toast-text">${escHtml(message)}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('out');
+    setTimeout(() => toast.remove(), 280);
+  }, 3500);
+}
+
+// Close modals on overlay click
+document.getElementById('lead-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeLeadModal();
+});
+document.getElementById('history-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeHistoryModal();
+});
+
+// Close on Escape key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeLeadModal();
+    closeHistoryModal();
+  }
+});
+
+// ============================================================
+//  INITIAL LOAD
+// ============================================================
+async function init() {
+  setStatus('disconnected', 'Connecting…');
+  connectWS();
+
+  // Load existing searches and leads from API
+  try {
+    const [searchRes, statsRes] = await Promise.allSettled([
+      apiFetch('/api/searches'),
+      apiFetch('/api/stats'),
+    ]);
+
+    if (searchRes.status === 'fulfilled' && searchRes.value.ok) {
+      state.allSearches = await searchRes.value.json();
+    }
+  } catch {}
+
+  // Try to load leads from search history
+  for (const search of state.allSearches.slice(0, 5)) {
+    const id = search.id || search._id;
+    try {
+      const res = await apiFetch(`/api/searches/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.leads && Array.isArray(data.leads)) {
+          data.leads.forEach(lead => {
+            const lid = lead.id || lead._id;
+            if (!state.allLeads.find(l => (l.id || l._id) === lid)) {
+              state.allLeads.push({ ...lead, searchId: id });
+            }
+          });
+        }
+      }
+    } catch {}
+  }
+
+  updateBadge();
+}
+
+init();
 </script>
 </body>
 </html>

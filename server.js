@@ -1,351 +1,249 @@
-// ============================================================
-//  server.js — Backend Server & API
-//  Run this with: node server.js
-//  Then open: http://localhost:3000 in your browser
-// ============================================================
-
 require('dotenv').config();
 
 const express = require('express');
-const fs = require('fs');
-const { enrichLead } = require('./enricher');
+const { WebSocketServer } = require('ws');
+const { createServer } = require('http');
 const path = require('path');
-const { scrapeGoogleMaps } = require('./scraper');
-const { qualifyLead, regenerateMessage } = require('./ai');
+const { v4: uuid } = require('uuid');
+const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
+
+const { q } = require('./db');
+const { runSearch, stopSearch } = require('./agent');
 
 const app = express();
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
+
 const PORT = process.env.PORT || 3000;
-// DATA_DIR lets you point leads.json at a Railway Volume (/data) so it
-// survives redeploys. Defaults to the app folder for local use.
-const LEADS_FILE = path.join(process.env.DATA_DIR || __dirname, 'leads.json');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ---- State ----
-let leads = loadLeads();
-let isScrapingActive = false;
-let stopScraping = false;
-let sseClients = [];
+// ─── WebSocket broadcast helpers ────────────────────────────────────────────
 
-// ============================================================
-//  SSE — Real-time updates pushed to the browser dashboard
-// ============================================================
+const clients = new Set();
 
-app.get('/api/events', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.flushHeaders();
-
-  res.write('data: {"type":"connected"}\n\n');
-
-  const clientId = `${Date.now()}-${Math.random()}`;
-  sseClients.push({ id: clientId, res });
-
-  req.on('close', () => {
-    sseClients = sseClients.filter(c => c.id !== clientId);
-  });
+wss.on('connection', (ws) => {
+  clients.add(ws);
+  ws.on('close', () => clients.delete(ws));
+  ws.on('error', () => clients.delete(ws));
+  // Send current search status on connect
+  ws.send(JSON.stringify({ type: 'connected' }));
 });
 
 function broadcast(data) {
-  const msg = `data: ${JSON.stringify(data)}\n\n`;
-  sseClients.forEach(client => {
-    try { client.res.write(msg); } catch (_) {}
-  });
+  const msg = JSON.stringify(data);
+  for (const ws of clients) {
+    try { if (ws.readyState === 1) ws.send(msg); } catch (_) {}
+  }
 }
 
-// ============================================================
-//  API: Leads
-// ============================================================
+// ─── Searches ────────────────────────────────────────────────────────────────
 
-// Get all leads (with optional filters)
-app.get('/api/leads', (req, res) => {
-  let result = [...leads];
-  const { noWebsiteOnly, minScore, category, status } = req.query;
-
-  if (noWebsiteOnly === 'true') result = result.filter(l => !l.hasWebsite);
-  if (minScore) result = result.filter(l => l.aiScore >= parseInt(minScore));
-  if (category && category !== 'all') result = result.filter(l => l.category?.toLowerCase().includes(category.toLowerCase()));
-  if (status && status !== 'all') result = result.filter(l => l.status === status);
-
-  res.json({ leads: result, total: result.length, scraping: isScrapingActive });
+app.get('/api/searches', (req, res) => {
+  res.json(q.listSearches.all());
 });
 
-// Get single lead
-app.get('/api/leads/:id', (req, res) => {
-  const lead = leads.find(l => l.id === req.params.id);
-  lead ? res.json(lead) : res.status(404).json({ error: 'Lead not found' });
+app.get('/api/searches/:id', (req, res) => {
+  const search = q.getSearch.get(req.params.id);
+  if (!search) return res.status(404).json({ error: 'Not found' });
+  const leads = q.getLeadsBySearch.all(req.params.id);
+  res.json({ ...search, leads });
 });
 
-// Update lead status or notes
-app.put('/api/leads/:id', (req, res) => {
-  const lead = leads.find(l => l.id === req.params.id);
-  if (!lead) return res.status(404).json({ error: 'Not found' });
-
-  const allowed = ['status', 'notes', 'outreachMessage', 'email', 'instagram', 'facebook', 'linkedin'];
-  allowed.forEach(field => {
-    if (req.body[field] !== undefined) lead[field] = req.body[field];
-  });
-  lead.updatedAt = new Date().toISOString();
-
-  saveLeads();
-  broadcast({ type: 'lead_updated', lead });
-  res.json({ success: true, lead });
-});
-
-// Delete a lead
-app.delete('/api/leads/:id', (req, res) => {
-  leads = leads.filter(l => l.id !== req.params.id);
-  saveLeads();
+app.delete('/api/searches/:id', (req, res) => {
+  q.deleteSearch.run(req.params.id);
   res.json({ success: true });
 });
 
-// Delete ALL leads
-app.delete('/api/leads', (req, res) => {
-  leads = [];
-  saveLeads();
-  res.json({ success: true });
-});
+app.post('/api/searches', (req, res) => {
+  const { category, location, country = '', radius_km = 10, limit_count = 20 } = req.body;
 
-// Regenerate outreach message for a lead
-app.post('/api/leads/:id/regenerate', async (req, res) => {
-  const lead = leads.find(l => l.id === req.params.id);
-  if (!lead) return res.status(404).json({ error: 'Not found' });
-
-  try {
-    const newMessage = await regenerateMessage(lead, req.body.instructions || '');
-    lead.outreachMessage = newMessage;
-    lead.updatedAt = new Date().toISOString();
-    saveLeads();
-    res.json({ success: true, outreachMessage: newMessage });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+  if (!category || !location) {
+    return res.status(400).json({ error: 'category and location are required' });
   }
-});
-
-// Find contact info for a lead (email, Instagram, Facebook, LinkedIn)
-app.post('/api/leads/:id/enrich', async (req, res) => {
-  const lead = leads.find(l => l.id === req.params.id);
-  if (!lead) return res.status(404).json({ error: 'Not found' });
-
-  // Respond immediately — enrichment runs in background, result pushed via SSE
-  res.json({ success: true, message: 'Searching for contact info...' });
-
-  try {
-    broadcast({ type: 'status', message: `🔍 Finding contact info for: ${lead.name}...` });
-    const found = await enrichLead({
-      name: lead.name,
-      city: lead.city || '',
-      website: lead.website || '',
-    });
-
-    lead.email = found.email || lead.email || null;
-    lead.instagram = found.instagram || lead.instagram || null;
-    lead.facebook = found.facebook || lead.facebook || null;
-    lead.linkedin = found.linkedin || lead.linkedin || null;
-    lead.enrichedAt = new Date().toISOString();
-    lead.updatedAt = new Date().toISOString();
-
-    saveLeads();
-    broadcast({ type: 'lead_enriched', lead });
-
-    const found_count = [found.email, found.instagram, found.facebook, found.linkedin].filter(Boolean).length;
-    broadcast({ type: 'status', message: `✅ Found ${found_count} contact item(s) for ${lead.name}` });
-  } catch (err) {
-    broadcast({ type: 'status', message: `⚠️ Enrichment failed for ${lead.name}: ${err.message}` });
-  }
-});
-
-// ============================================================
-//  API: Scraping
-// ============================================================
-
-app.get('/api/scrape/status', (req, res) => {
-  res.json({ active: isScrapingActive, totalLeads: leads.length });
-});
-
-app.post('/api/scrape/start', async (req, res) => {
-  if (isScrapingActive) {
-    return res.json({ success: false, message: 'Already scraping. Stop it first.' });
-  }
-
-  const { category = 'restaurants', city = 'Riyadh', limit = 50 } = req.body;
-
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'sk-paste-your-key-here') {
     return res.status(400).json({ error: 'OpenAI API key not configured. Check your .env file.' });
   }
 
-  res.json({ success: true, message: `Starting scraper for "${category}" in ${city}` });
+  const searchId = uuid();
+  q.insertSearch.run({ id: searchId, category, location, country, radius_km, limit_count });
+  const search = q.getSearch.get(searchId);
 
-  // Run scraper in background
-  isScrapingActive = true;
-  stopScraping = false;
+  res.json({ success: true, search });
 
-  broadcast({ type: 'scrape_started', category, city, limit });
-
-  runScraper(category, city, parseInt(limit))
-    .then(() => {
-      isScrapingActive = false;
-      broadcast({ type: 'scrape_done', totalLeads: leads.length });
-    })
-    .catch(err => {
-      isScrapingActive = false;
-      broadcast({ type: 'scrape_error', message: err.message });
-    });
+  // Start agent in background
+  broadcast({ type: 'search_started', search });
+  runSearch(search, broadcast).catch(err => {
+    broadcast({ type: 'search_error', searchId, error: err.message });
+  });
 });
 
-app.post('/api/scrape/stop', (req, res) => {
-  stopScraping = true;
-  isScrapingActive = false;
-  broadcast({ type: 'scrape_stopped' });
-  res.json({ success: true, message: 'Stopping scraper after current business...' });
+app.post('/api/searches/:id/stop', (req, res) => {
+  stopSearch(req.params.id);
+  res.json({ success: true });
 });
 
-async function runScraper(category, city, limit) {
-  await scrapeGoogleMaps(
-    category,
-    city,
-    limit,
-    // Called for each scraped business — qualify with AI then save
-    async (businessData) => {
-      if (stopScraping) return;
+// ─── Leads ───────────────────────────────────────────────────────────────────
 
-      broadcast({ type: 'status', message: `🤖 AI qualifying: ${businessData.name}...` });
-
-      const aiResult = await qualifyLead(businessData);
-
-      const lead = {
-        id: `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-        ...businessData,
-        hasWebsite: aiResult.hasWebsite,
-        aiScore: aiResult.score,
-        aiReasoning: aiResult.reasoning,
-        reviewInsight: aiResult.reviewInsight,
-        outreachMessage: aiResult.outreachMessage,
-        status: 'new',
-        scrapedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      // Check for duplicates
-      const duplicate = leads.find(l =>
-        l.name?.toLowerCase() === lead.name?.toLowerCase() &&
-        l.address?.toLowerCase() === lead.address?.toLowerCase()
-      );
-      if (duplicate) {
-        broadcast({ type: 'status', message: `⏭️ Skipping duplicate: ${lead.name}` });
-        return;
-      }
-
-      leads.push(lead);
-      saveLeads();
-      broadcast({ type: 'new_lead', lead });
-    },
-    // Status messages
-    (message) => {
-      broadcast({ type: 'status', message });
-    },
-    // Should stop check
-    () => stopScraping
-  );
-}
-
-// ============================================================
-//  API: Export CSV
-// ============================================================
-
-app.get('/api/export', (req, res) => {
-  const { noWebsiteOnly, minScore } = req.query;
-  let exportLeads = [...leads];
-
-  if (noWebsiteOnly === 'true') exportLeads = exportLeads.filter(l => !l.hasWebsite);
-  if (minScore) exportLeads = exportLeads.filter(l => l.aiScore >= parseInt(minScore));
-
-  const headers = [
-    'Business Name', 'Category', 'Phone', 'Address', 'Website',
-    'Has Website', 'Rating', 'Review Count', 'AI Score', 'AI Reasoning',
-    'Review Insight', 'Outreach Message', 'Email', 'Instagram', 'Facebook',
-    'LinkedIn', 'Status', 'Notes', 'Scraped At'
-  ];
-
-  const rows = exportLeads.map(l => [
-    l.name, l.category, l.phone, l.address, l.website,
-    l.hasWebsite ? 'Yes' : 'No', l.rating, l.reviewCount,
-    l.aiScore, l.aiReasoning, l.reviewInsight, l.outreachMessage,
-    l.email, l.instagram, l.facebook, l.linkedin,
-    l.status, l.notes, l.scrapedAt
-  ]);
-
-  const escape = (val) => `"${String(val || '').replace(/"/g, '""')}"`;
-  const csv = [headers, ...rows].map(row => row.map(escape).join(',')).join('\n');
-
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename=leads-${Date.now()}.csv`);
-  res.send('\uFEFF' + csv); // BOM for Excel UTF-8 compatibility
+app.get('/api/leads', (req, res) => {
+  const { db } = require('./db');
+  const leads = db.prepare('SELECT * FROM leads ORDER BY scraped_at DESC').all();
+  res.json(leads);
 });
 
-// ============================================================
-//  API: Stats
-// ============================================================
+app.get('/api/leads/:id', (req, res) => {
+  const lead = q.getLead.get(req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Not found' });
+  res.json(lead);
+});
+
+app.put('/api/leads/:id', (req, res) => {
+  const lead = q.getLead.get(req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Not found' });
+  const { status, notes, outreach_message } = req.body;
+  q.updateLead.run({
+    id: req.params.id,
+    status: status ?? lead.status,
+    notes: notes ?? lead.notes,
+    outreach_message: outreach_message ?? lead.outreach_message,
+  });
+  broadcast({ type: 'lead_updated', lead: q.getLead.get(req.params.id) });
+  res.json({ success: true });
+});
+
+app.delete('/api/leads/:id', (req, res) => {
+  q.deleteLead.run(req.params.id);
+  res.json({ success: true });
+});
+
+// ─── Stats ───────────────────────────────────────────────────────────────────
 
 app.get('/api/stats', (req, res) => {
-  const total = leads.length;
-  const noWebsite = leads.filter(l => !l.hasWebsite).length;
-  const highScore = leads.filter(l => l.aiScore >= 7).length;
-  const contacted = leads.filter(l => l.status === 'contacted').length;
-  const replied = leads.filter(l => l.status === 'replied').length;
-  const converted = leads.filter(l => l.status === 'converted').length;
-
-  // Category breakdown
-  const byCategory = {};
-  leads.forEach(l => {
-    const cat = l.category || 'Unknown';
-    byCategory[cat] = (byCategory[cat] || 0) + 1;
-  });
-
-  res.json({ total, noWebsite, highScore, contacted, replied, converted, byCategory });
+  res.json(q.stats.get());
 });
 
-// ============================================================
-//  Helpers
-// ============================================================
+// ─── Exports ─────────────────────────────────────────────────────────────────
 
-function loadLeads() {
-  try {
-    if (fs.existsSync(LEADS_FILE)) {
-      return JSON.parse(fs.readFileSync(LEADS_FILE, 'utf-8'));
-    }
-  } catch (_) {}
-  return [];
-}
+app.get('/api/export/:searchId/excel', async (req, res) => {
+  const leads = req.params.searchId === 'all'
+    ? require('./db').db.prepare('SELECT * FROM leads ORDER BY ai_score DESC').all()
+    : q.getLeadsBySearch.all(req.params.searchId);
 
-function saveLeads() {
-  try {
-    fs.writeFileSync(LEADS_FILE, JSON.stringify(leads, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[Server] Failed to save leads:', err.message);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Leads');
+
+  ws.columns = [
+    { header: 'Business Name', key: 'name', width: 28 },
+    { header: 'Category', key: 'category', width: 16 },
+    { header: 'City', key: 'city', width: 16 },
+    { header: 'Address', key: 'address', width: 30 },
+    { header: 'Phone', key: 'phone', width: 18 },
+    { header: 'Website', key: 'website', width: 30 },
+    { header: 'Website Status', key: 'website_status', width: 16 },
+    { header: 'Rating', key: 'rating', width: 8 },
+    { header: 'Reviews', key: 'review_count', width: 10 },
+    { header: 'AI Score', key: 'ai_score', width: 10 },
+    { header: 'Marketing Score', key: 'marketing_score', width: 16 },
+    { header: 'AI Reasoning', key: 'ai_reasoning', width: 40 },
+    { header: 'Email', key: 'email', width: 28 },
+    { header: 'Instagram', key: 'instagram_handle', width: 20 },
+    { header: 'IG Followers', key: 'instagram_followers', width: 14 },
+    { header: 'IG Posts/Month', key: 'instagram_posts_per_month', width: 14 },
+    { header: 'IG Last Post', key: 'instagram_last_post', width: 14 },
+    { header: 'LinkedIn', key: 'linkedin_company_url', width: 36 },
+    { header: 'Owner', key: 'linkedin_owner_name', width: 20 },
+    { header: 'Owner LinkedIn', key: 'linkedin_owner_url', width: 36 },
+    { header: 'Outreach Message', key: 'outreach_message', width: 50 },
+    { header: 'Status', key: 'status', width: 14 },
+    { header: 'Notes', key: 'notes', width: 30 },
+    { header: 'Scraped At', key: 'scraped_at', width: 20 },
+  ];
+
+  // Header style
+  ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1a1f2e' } };
+  ws.getRow(1).height = 20;
+
+  for (const lead of leads) {
+    const row = ws.addRow(lead);
+    // Color code by score
+    const score = lead.ai_score || 0;
+    const fill = score >= 8 ? '22c55e' : score >= 6 ? 'f0a500' : 'ef4444';
+    row.getCell('ai_score').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + fill } };
+    row.getCell('ai_score').font = { bold: true, color: { argb: 'FF000000' } };
   }
-}
 
-// ============================================================
-//  Start Server
-// ============================================================
+  ws.autoFilter = { from: 'A1', to: ws.columns[ws.columns.length - 1].letter + '1' };
 
-app.listen(PORT, () => {
-  console.log('');
-  console.log('  ╔════════════════════════════════════════╗');
-  console.log('  ║   🚀 Lead Gen Dashboard is RUNNING!    ║');
-  console.log('  ╠════════════════════════════════════════╣');
-  console.log(`  ║   Open in browser: http://localhost:${PORT} ║`);
-  console.log('  ╚════════════════════════════════════════╝');
-  console.log('');
-  console.log(`  Loaded ${leads.length} existing leads from disk.`);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename=leads-${req.params.searchId}-${Date.now()}.xlsx`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
+app.get('/api/export/:searchId/pdf', async (req, res) => {
+  const leads = req.params.searchId === 'all'
+    ? require('./db').db.prepare('SELECT * FROM leads ORDER BY ai_score DESC').all()
+    : q.getLeadsBySearch.all(req.params.searchId);
+
+  const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename=leads-${Date.now()}.pdf`);
+  doc.pipe(res);
+
+  doc.fontSize(18).fillColor('#f0a500').text('LeadHunter AI — Lead Report', { align: 'center' });
+  doc.fontSize(10).fillColor('#888').text(`Generated: ${new Date().toLocaleString()} | Total leads: ${leads.length}`, { align: 'center' });
+  doc.moveDown();
+
+  const cols = ['Name', 'Phone', 'Score', 'Website', 'Email', 'Instagram', 'Status'];
+  const widths = [160, 100, 45, 120, 140, 110, 70];
+  let x = 40;
+  let y = doc.y;
+
+  // Header row
+  doc.fillColor('#1a1f2e').rect(40, y, 760, 18).fill();
+  doc.fillColor('#ffffff').fontSize(8);
+  cols.forEach((col, i) => {
+    doc.text(col, x, y + 4, { width: widths[i], lineBreak: false });
+    x += widths[i];
+  });
+  y += 20;
+
+  // Data rows
+  doc.fontSize(7);
+  for (const lead of leads) {
+    if (y > 530) { doc.addPage({ layout: 'landscape' }); y = 40; }
+    const rowColor = (lead.ai_score || 0) >= 7 ? '#0f2318' : '#1a1f2e';
+    doc.fillColor(rowColor).rect(40, y, 760, 16).fill();
+    doc.fillColor('#e2e8f0');
+    x = 40;
+    const vals = [
+      lead.name, lead.phone || '—', `${lead.ai_score || 0}/10`,
+      lead.website_status || 'none', lead.email || '—',
+      lead.instagram_handle ? `@${lead.instagram_handle}` : '—', lead.status || 'new',
+    ];
+    vals.forEach((val, i) => {
+      doc.text(String(val).slice(0, 30), x + 2, y + 3, { width: widths[i] - 4, lineBreak: false, ellipsis: true });
+      x += widths[i];
+    });
+    y += 17;
+  }
+
+  doc.end();
+});
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+
+server.listen(PORT, () => {
+  console.log('\n  ╔══════════════════════════════════════════╗');
+  console.log('  ║   ⚡ LeadHunter AI v2  —  RUNNING        ║');
+  console.log(`  ║   Open: http://localhost:${PORT}            ║`);
+  console.log('  ╚══════════════════════════════════════════╝\n');
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'sk-paste-your-key-here') {
-    console.log('  ⚠️  WARNING: OpenAI API key not set! Edit the .env file.');
+    console.log('  ⚠️  WARNING: OPENAI_API_KEY not set. Edit .env file.\n');
   } else {
-    console.log('  ✅ OpenAI API key loaded.');
+    console.log(`  ✅ OpenAI key loaded. Model: ${process.env.OPENAI_MODEL || 'gpt-4o-mini'}\n`);
   }
-  console.log('');
 });
