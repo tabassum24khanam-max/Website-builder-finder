@@ -117,6 +117,8 @@ async function runSearch(searchConfig, broadcast) {
           ai_reasoning: lead.aiReasoning || null,
           outreach_message: lead.outreachMessage || null,
           maps_url: lead.mapsUrl || null,
+          lat: lead.lat || null,
+          lng: lead.lng || null,
         });
 
         leadsFound++;
@@ -238,6 +240,8 @@ async function analyzeBusiness(biz, page, { searchId, location, country }, log, 
     aiReasoning: score.aiReasoning,
     outreachMessage: score.outreachMessage,
     mapsUrl: biz.mapsUrl,
+    lat: biz.lat,
+    lng: biz.lng,
   };
 }
 

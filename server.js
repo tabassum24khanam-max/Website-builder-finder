@@ -58,7 +58,9 @@ app.delete('/api/searches/:id', (req, res) => {
 });
 
 app.post('/api/searches', (req, res) => {
-  const { category, location, country = '', radius_km = 10, limit_count = 20 } = req.body;
+  const { category, location, country = '', radius_km, radius, limit_count, count } = req.body;
+  const effectiveRadius = parseInt(radius_km || radius) || 10;
+  const effectiveCount = parseInt(limit_count || count) || 20;
 
   if (!category || !location) {
     return res.status(400).json({ error: 'category and location are required' });
@@ -68,7 +70,7 @@ app.post('/api/searches', (req, res) => {
   }
 
   const searchId = uuid();
-  q.insertSearch.run({ id: searchId, category, location, country, radius_km, limit_count });
+  q.insertSearch.run({ id: searchId, category, location, country, radius_km: effectiveRadius, limit_count: effectiveCount });
   const search = q.getSearch.get(searchId);
 
   res.json({ success: true, search });

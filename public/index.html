@@ -823,7 +823,38 @@
 
   /* Export buttons */
   .export-row { display: flex; gap: 8px; }
+
+  /* Location autocomplete */
+  .location-wrap { position: relative; }
+  .location-field-row { display: flex; gap: 8px; }
+  .gps-btn { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; cursor: pointer; color: var(--amber); font-size: 16px; transition: all 0.15s; flex-shrink: 0; }
+  .gps-btn:hover { border-color: var(--amber); background: var(--amber-glow); }
+  .location-suggestions { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 500; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .location-suggestions.open { display: block; }
+  .loc-suggestion { padding: 10px 14px; cursor: pointer; font-size: 13px; color: var(--text); border-bottom: 1px solid var(--border); }
+  .loc-suggestion:last-child { border-bottom: none; }
+  .loc-suggestion:hover { background: var(--amber-glow); color: var(--amber); }
+  .loc-suggestion-name { font-weight: 600; }
+  .loc-suggestion-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+
+  /* View toggle (All Leads + History modal) */
+  .view-toggle { display: flex; gap: 2px; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; margin-right: 4px; }
+  .view-btn { padding: 5px 12px; border-radius: 5px; border: none; background: transparent; color: var(--text-dim); cursor: pointer; font-size: 12.5px; font-weight: 500; font-family: inherit; transition: all 0.15s; }
+  .view-btn.active { background: var(--amber); color: #000; }
+  .view-btn:not(.active):hover { color: var(--text); background: var(--surface); }
+
+  /* Split modal */
+  .modal-wide { max-width: 1100px !important; }
+  .modal-split-body { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+  .modal-split-body .modal-body { flex: 1; overflow-y: auto; min-width: 0; }
+  .modal-map-side { width: 380px; min-width: 380px; border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  @media (max-width: 900px) {
+    .modal-split-body { flex-direction: column; }
+    .modal-map-side { width: 100%; min-width: 0; height: 240px; min-height: 240px; border-left: none; border-top: 1px solid var(--border); }
+  }
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 <div id="app">
@@ -906,7 +937,13 @@
           </div>
           <div class="form-group">
             <label class="form-label">Location</label>
-            <input type="text" id="location-input" placeholder="City name, area, or zip code e.g. Dubai Marina">
+            <div class="location-wrap">
+              <div class="location-field-row">
+                <input type="text" id="location-input" autocomplete="off" placeholder="City name, area, or zip code e.g. Dubai Marina">
+                <button class="gps-btn" onclick="useCurrentLocation()" title="Use my current location">📍</button>
+              </div>
+              <div class="location-suggestions" id="location-suggestions"></div>
+            </div>
           </div>
         </div>
 
@@ -980,6 +1017,10 @@
       </div>
 
       <div class="filter-bar" id="filter-bar">
+        <div class="view-toggle">
+          <button class="view-btn active" id="view-table-btn" onclick="setLeadsView('table')">⊞ Table</button>
+          <button class="view-btn" id="view-map-btn" onclick="setLeadsView('map')">🗺 Map</button>
+        </div>
         <button class="filter-tab active" data-filter="all">All</button>
         <button class="filter-tab" data-filter="no-website">No Website</button>
         <button class="filter-tab" data-filter="score7">Score 7+</button>
@@ -1019,6 +1060,10 @@
           <div class="empty-title">No leads found</div>
           <div class="empty-sub">Start a search to find leads or adjust your filters.</div>
         </div>
+      </div>
+
+      <div id="leads-map-container" style="display:none; height:500px; border-radius:var(--radius-lg); overflow:hidden; border:1px solid var(--border);">
+        <div id="leads-map" style="height:100%; width:100%;"></div>
       </div>
     </div>
 
@@ -1074,7 +1119,7 @@
 
 <!-- ===== LEAD DETAIL MODAL ===== -->
 <div class="modal-overlay" id="lead-modal">
-  <div class="modal">
+  <div class="modal modal-wide">
     <div class="modal-header">
       <div>
         <div class="modal-title" id="modal-biz-name">Business Name</div>
@@ -1082,8 +1127,16 @@
       </div>
       <button class="modal-close" onclick="closeLeadModal()">✕</button>
     </div>
-    <div class="modal-body" id="modal-body">
-      <!-- dynamically filled -->
+    <div class="modal-split-body">
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-map-side" id="modal-map-side">
+        <div id="lead-detail-map" style="height:100%;width:100%;min-height:400px;"></div>
+        <div id="lead-map-placeholder" style="display:none;height:100%;min-height:300px;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:var(--surface2);color:var(--text-dim);padding:32px;text-align:center;">
+          <div style="font-size:40px">📍</div>
+          <div>Location not available<br><small>Coordinates will be captured on future searches</small></div>
+          <a id="lead-maps-link" href="#" target="_blank" class="btn btn-ghost btn-sm" style="display:none">Open Google Maps ↗</a>
+        </div>
+      </div>
     </div>
     <div class="modal-footer" id="modal-footer">
       <button class="btn btn-amber" onclick="saveLeadChanges()">💾 Save Changes</button>
@@ -1119,6 +1172,13 @@
         <div class="empty-icon">🔍</div>
         <div class="empty-title">No leads for this search</div>
       </div>
+      <div id="hm-map-container" style="display:none; height:400px; margin-top:16px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border);">
+        <div id="hm-leads-map" style="height:100%;width:100%;"></div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center;">
+        <button class="view-btn active" id="hm-view-table-btn" onclick="setHistoryView('table')">⊞ Table</button>
+        <button class="view-btn" id="hm-view-map-btn" onclick="setHistoryView('map')">🗺 Map</button>
+      </div>
     </div>
     <div class="modal-footer">
       <div class="spacer"></div>
@@ -1145,6 +1205,7 @@ const state = {
   wsConnected: false,
   ws: null,
   wsReconnectTimer: null,
+  leadsView: 'table',
 };
 
 // ============================================================
@@ -1702,11 +1763,15 @@ function openLeadModal(id) {
   `;
 
   document.getElementById('lead-modal').classList.add('open');
+
+  // Initialize/update the detail map
+  setTimeout(() => initDetailMap(lead), 50);
 }
 
 function closeLeadModal() {
   document.getElementById('lead-modal').classList.remove('open');
   state.editingLeadId = null;
+  // Don't destroy map instance, just clean up marker
 }
 
 function selectModalStatus(s) {
@@ -1876,6 +1941,8 @@ async function openHistoryModal(searchId) {
     }
   } catch {}
 
+  window.__hmLeads = leads;
+
   const tbody = document.getElementById('hm-tbody');
   const empty = document.getElementById('hm-empty');
   if (!leads.length) {
@@ -1890,6 +1957,7 @@ async function openHistoryModal(searchId) {
       const wsStatus = lead.websiteStatus || 'none';
       const status = lead.status || 'new';
       const tr = document.createElement('tr');
+      tr.dataset.leadId = id;
       tr.onclick = () => { closeHistoryModal(); openLeadModal(id); };
       tr.innerHTML = `
         <td><div class="td-name">${escHtml(lead.businessName||lead.name||'–')}</div></td>
@@ -1904,6 +1972,7 @@ async function openHistoryModal(searchId) {
     });
   }
   document.getElementById('history-modal').classList.add('open');
+  setHistoryView('table');
 }
 
 function closeHistoryModal() {

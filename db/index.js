@@ -9,6 +9,10 @@ const db = new Database(path.join(dataDir, 'leadhunter.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// Migrations for existing databases
+try { db.exec('ALTER TABLE leads ADD COLUMN lat REAL'); } catch (_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN lng REAL'); } catch (_) {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS searches (
     id         TEXT PRIMARY KEY,
@@ -52,6 +56,8 @@ db.exec(`
     ai_reasoning             TEXT,
     outreach_message         TEXT,
     maps_url                 TEXT,
+    lat                      REAL,
+    lng                      REAL,
     status                   TEXT DEFAULT 'new',
     notes                    TEXT,
     scraped_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -82,13 +88,13 @@ const q = {
       rating, review_count, instagram_handle, instagram_followers, instagram_posts,
       instagram_posts_per_month, instagram_last_post, instagram_bio, instagram_url,
       linkedin_company_url, linkedin_owner_name, linkedin_owner_url,
-      email, owner_email, ai_score, marketing_score, ai_reasoning, outreach_message, maps_url
+      email, owner_email, ai_score, marketing_score, ai_reasoning, outreach_message, maps_url, lat, lng
     ) VALUES (
       @id, @search_id, @name, @category, @city, @address, @phone, @website, @website_status,
       @rating, @review_count, @instagram_handle, @instagram_followers, @instagram_posts,
       @instagram_posts_per_month, @instagram_last_post, @instagram_bio, @instagram_url,
       @linkedin_company_url, @linkedin_owner_name, @linkedin_owner_url,
-      @email, @owner_email, @ai_score, @marketing_score, @ai_reasoning, @outreach_message, @maps_url
+      @email, @owner_email, @ai_score, @marketing_score, @ai_reasoning, @outreach_message, @maps_url, @lat, @lng
     )
   `),
   updateLead: db.prepare(`

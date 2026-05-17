@@ -105,8 +105,11 @@ async function extractDetails(page, log) {
   const reviewCount = reviewAriaLabel ? parseInt(reviewAriaLabel.replace(/[^0-9]/g, '')) || 0 : 0;
 
   const mapsUrl = page.url();
+  const coordMatch = mapsUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  const lat = coordMatch ? parseFloat(coordMatch[1]) : null;
+  const lng = coordMatch ? parseFloat(coordMatch[2]) : null;
 
-  return { name, category, address, phone, website, rating, reviewCount, mapsUrl };
+  return { name, category, address, phone, website, rating, reviewCount, mapsUrl, lat, lng };
 }
 
 async function scrollFeed(page) {
