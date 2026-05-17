@@ -2190,6 +2190,300 @@ function showToast(type, icon, message) {
   }, 3500);
 }
 
+// ============================================================
+//  LOCATION AUTOCOMPLETE
+// ============================================================
+let locationACTimer = null;
+
+document.getElementById('location-input').addEventListener('input', function() {
+  clearTimeout(locationACTimer);
+  const q = this.value.trim();
+  if (q.length < 3) { closeLocationSuggestions(); return; }
+  locationACTimer = setTimeout(() => fetchLocationSuggestions(q), 350);
+});
+
+document.getElementById('location-input').addEventListener('blur', function() {
+  setTimeout(closeLocationSuggestions, 200);
+});
+
+async function fetchLocationSuggestions(query) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+    const data = await res.json();
+    if (!data.length) { closeLocationSuggestions(); return; }
+    showLocationSuggestions(data);
+  } catch { closeLocationSuggestions(); }
+}
+
+function showLocationSuggestions(results) {
+  const box = document.getElementById('location-suggestions');
+  box.innerHTML = results.map(r => {
+    const city = r.address?.city || r.address?.town || r.address?.village || r.address?.county || '';
+    const country = r.address?.country || '';
+    const zip = r.address?.postcode || '';
+    const mainName = city || r.display_name.split(',')[0];
+    const sub = [zip, country].filter(Boolean).join(', ');
+    const displayVal = city || r.display_name.split(',').slice(0,2).join(', ');
+    return `<div class="loc-suggestion" onclick="selectLocation('${escHtml(displayVal)}', '${escHtml(country)}')">
+      <div class="loc-suggestion-name">${escHtml(mainName)}</div>
+      ${sub ? `<div class="loc-suggestion-sub">${escHtml(sub)}</div>` : ''}
+    </div>`;
+  }).join('');
+  box.classList.add('open');
+}
+
+function selectLocation(display, country) {
+  document.getElementById('location-input').value = display;
+  if (country && !document.getElementById('country-input').value.trim()) {
+    document.getElementById('country-input').value = country;
+  }
+  closeLocationSuggestions();
+}
+
+function closeLocationSuggestions() {
+  document.getElementById('location-suggestions').classList.remove('open');
+}
+
+async function useCurrentLocation() {
+  const btn = document.querySelector('.gps-btn');
+  if (!navigator.geolocation) { showToast('error', '❌', 'Geolocation not supported'); return; }
+  btn.textContent = '⏳';
+  navigator.geolocation.getCurrentPosition(async pos => {
+    try {
+      const { latitude: lat, longitude: lng } = pos.coords;
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: { 'Accept-Language': 'en' } });
+      const data = await res.json();
+      const addr = data.address || {};
+      const city = addr.city || addr.town || addr.village || addr.county || data.display_name.split(',')[0];
+      const country = addr.country || '';
+      document.getElementById('location-input').value = city;
+      if (country && !document.getElementById('country-input').value.trim()) {
+        document.getElementById('country-input').value = country;
+      }
+      showToast('success', '📍', `Location set to ${city}`);
+    } catch { showToast('error', '❌', 'Could not reverse geocode location'); }
+    btn.textContent = '📍';
+  }, () => {
+    showToast('error', '❌', 'Location access denied');
+    btn.textContent = '📍';
+  }, { timeout: 10000 });
+}
+
+// ============================================================
+//  ALL LEADS MAP VIEW
+// ============================================================
+let leadsMapInstance = null;
+let leadsMapMarkers = [];
+
+function setLeadsView(mode) {
+  state.leadsView = mode;
+  document.getElementById('view-table-btn').classList.toggle('active', mode === 'table');
+  document.getElementById('view-map-btn').classList.toggle('active', mode === 'map');
+  const tablePanel = document.querySelector('#page-all-leads .panel');
+  const mapContainer = document.getElementById('leads-map-container');
+  if (mode === 'table') {
+    tablePanel.style.display = '';
+    mapContainer.style.display = 'none';
+  } else {
+    tablePanel.style.display = 'none';
+    mapContainer.style.display = '';
+    renderLeadsMap();
+  }
+}
+
+function getLeadCoords(lead) {
+  if (lead.lat && lead.lng) return [lead.lat, lead.lng];
+  const url = lead.mapsUrl || lead.maps_url || '';
+  const m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
+}
+
+function renderLeadsMap() {
+  const container = document.getElementById('leads-map-container');
+  if (container.style.display === 'none') return;
+
+  const filterVal = state.filterTab;
+  const searchVal = (document.getElementById('leads-search').value || '').toLowerCase();
+  let leads = [...state.allLeads];
+  if (filterVal === 'no-website') leads = leads.filter(l => l.websiteStatus === 'none' || !l.websiteStatus);
+  else if (filterVal === 'score7') leads = leads.filter(l => (l.aiScore ?? l.score ?? 0) >= 7);
+  else if (['new','contacted','replied','converted','skipped'].includes(filterVal)) leads = leads.filter(l => (l.status || 'new') === filterVal);
+  if (searchVal) leads = leads.filter(l => (l.businessName||l.name||'').toLowerCase().includes(searchVal) || (l.category||'').toLowerCase().includes(searchVal));
+
+  const mapped = leads.map(l => ({ lead: l, coords: getLeadCoords(l) })).filter(x => x.coords);
+  if (!mapped.length) {
+    document.getElementById('leads-map').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);flex-direction:column;gap:12px;background:var(--surface2)"><div style="font-size:36px">🗺️</div><div>No coordinates available yet — run a new search to populate the map</div></div>';
+    if (leadsMapInstance) { leadsMapInstance.remove(); leadsMapInstance = null; }
+    return;
+  }
+
+  if (!leadsMapInstance) {
+    leadsMapInstance = L.map('leads-map', { zoomControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 19
+    }).addTo(leadsMapInstance);
+  } else {
+    leadsMapMarkers.forEach(m => m.remove());
+    leadsMapMarkers = [];
+  }
+
+  const bounds = [];
+  mapped.forEach(({ lead, coords }) => {
+    const score = lead.aiScore ?? lead.score ?? 0;
+    const color = score >= 7 ? '#22c55e' : score >= 5 ? '#f0a500' : '#ef4444';
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:${color};color:#000;font-weight:700;font-size:11px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.3);box-shadow:0 2px 6px rgba(0,0,0,0.4)">${score}</div>`,
+      iconSize: [28, 28], iconAnchor: [14, 14]
+    });
+    const id = lead.id || lead._id;
+    const name = lead.businessName || lead.name || 'Unknown';
+    const marker = L.marker(coords, { icon }).addTo(leadsMapInstance);
+    marker.bindPopup(`<div style="font-family:system-ui;min-width:160px"><strong>${name}</strong><br><small>${lead.category||''}</small><br><span style="color:${color}">Score: ${score}/10</span>${lead.phone?`<br>📞 ${lead.phone}`:''}<br><button onclick="window.__openLead('${id}')" style="margin-top:6px;padding:3px 10px;background:#f0a500;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">View Details</button></div>`);
+    leadsMapMarkers.push(marker);
+    bounds.push(coords);
+  });
+
+  if (bounds.length === 1) {
+    leadsMapInstance.setView(bounds[0], 15);
+  } else {
+    leadsMapInstance.fitBounds(bounds, { padding: [40, 40] });
+  }
+  setTimeout(() => leadsMapInstance.invalidateSize(), 100);
+}
+
+window.__openLead = function(id) {
+  document.querySelectorAll('.leaflet-popup').forEach(p => p.style.display = 'none');
+  openLeadModal(id);
+};
+
+// ============================================================
+//  LEAD DETAIL MAP
+// ============================================================
+let detailMapInstance = null;
+let detailMapMarker = null;
+
+function initDetailMap(lead) {
+  const coords = getLeadCoords(lead);
+  const mapEl = document.getElementById('lead-detail-map');
+  const placeholder = document.getElementById('lead-map-placeholder');
+  const mapsLink = document.getElementById('lead-maps-link');
+
+  if (!coords) {
+    mapEl.style.display = 'none';
+    placeholder.style.display = 'flex';
+    const mUrl = lead.mapsUrl || lead.maps_url || '';
+    if (mUrl) {
+      mapsLink.style.display = '';
+      mapsLink.href = mUrl;
+    } else {
+      mapsLink.style.display = 'none';
+    }
+    return;
+  }
+
+  mapEl.style.display = '';
+  placeholder.style.display = 'none';
+
+  if (!detailMapInstance) {
+    detailMapInstance = L.map('lead-detail-map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 19
+    }).addTo(detailMapInstance);
+  }
+
+  if (detailMapMarker) detailMapMarker.remove();
+
+  const score = lead.aiScore ?? lead.score ?? 0;
+  const color = score >= 7 ? '#22c55e' : score >= 5 ? '#f0a500' : '#ef4444';
+  const icon = L.divIcon({
+    className: '',
+    html: `<div style="background:${color};color:#000;font-weight:700;font-size:12px;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.3);box-shadow:0 2px 8px rgba(0,0,0,0.5)">${score}</div>`,
+    iconSize: [32, 32], iconAnchor: [16, 16]
+  });
+
+  detailMapMarker = L.marker(coords, { icon }).addTo(detailMapInstance)
+    .bindPopup(`<strong>${escHtml(lead.businessName || lead.name || '')}</strong><br>${escHtml(lead.address || '')}`)
+    .openPopup();
+
+  detailMapInstance.setView(coords, 16);
+  detailMapInstance.invalidateSize();
+}
+
+// ============================================================
+//  HISTORY MAP VIEW
+// ============================================================
+let hmMapInstance = null;
+let hmMapMarkers = [];
+
+function setHistoryView(mode) {
+  document.getElementById('hm-view-table-btn').classList.toggle('active', mode === 'table');
+  document.getElementById('hm-view-map-btn').classList.toggle('active', mode === 'map');
+  const tableWrap = document.querySelector('#history-modal .table-wrap');
+  const mapContainer = document.getElementById('hm-map-container');
+  if (mode === 'table') {
+    tableWrap.style.display = '';
+    mapContainer.style.display = 'none';
+  } else {
+    tableWrap.style.display = 'none';
+    mapContainer.style.display = '';
+    renderHistoryMap();
+  }
+}
+
+function renderHistoryMap() {
+  const tbody = document.getElementById('hm-tbody');
+  const leads = Array.from(tbody.querySelectorAll('tr')).map(tr => {
+    const id = tr.dataset.leadId;
+    return state.allLeads.find(l => (l.id||l._id) === id) || window.__hmLeads?.find(l => (l.id||l._id) === id);
+  }).filter(Boolean);
+
+  const mapped = leads.map(l => ({ lead: l, coords: getLeadCoords(l) })).filter(x => x.coords);
+
+  if (!mapped.length) {
+    document.getElementById('hm-leads-map').innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-dim);flex-direction:column;gap:12px;background:var(--surface2)"><div style="font-size:32px">🗺️</div><div>No coordinates for these leads</div></div>';
+    if (hmMapInstance) { hmMapInstance.remove(); hmMapInstance = null; }
+    return;
+  }
+
+  if (!hmMapInstance) {
+    hmMapInstance = L.map('hm-leads-map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors', maxZoom: 19
+    }).addTo(hmMapInstance);
+  } else {
+    hmMapMarkers.forEach(m => m.remove());
+    hmMapMarkers = [];
+  }
+
+  const bounds = [];
+  mapped.forEach(({ lead, coords }) => {
+    const score = lead.aiScore ?? lead.score ?? 0;
+    const color = score >= 7 ? '#22c55e' : score >= 5 ? '#f0a500' : '#ef4444';
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:${color};color:#000;font-weight:700;font-size:10px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.3)">${score}</div>`,
+      iconSize: [24, 24], iconAnchor: [12, 12]
+    });
+    const id = lead.id || lead._id;
+    const name = lead.businessName || lead.name || 'Unknown';
+    const m = L.marker(coords, { icon }).addTo(hmMapInstance);
+    m.bindPopup(`<div style="font-family:system-ui"><strong>${name}</strong><br><span style="color:${color}">Score: ${score}/10</span><br><button onclick="window.__openLeadFromHM('${id}')" style="margin-top:4px;padding:2px 8px;background:#f0a500;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">View</button></div>`);
+    hmMapMarkers.push(m);
+    bounds.push(coords);
+  });
+
+  if (bounds.length === 1) hmMapInstance.setView(bounds[0], 15);
+  else hmMapInstance.fitBounds(bounds, { padding: [30, 30] });
+  setTimeout(() => hmMapInstance.invalidateSize(), 100);
+}
+
+window.__openLeadFromHM = function(id) {
+  closeHistoryModal();
+  openLeadModal(id);
+};
+
 // Close modals on overlay click
 document.getElementById('lead-modal').addEventListener('click', function(e) {
   if (e.target === this) closeLeadModal();
