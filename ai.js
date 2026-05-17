@@ -5,7 +5,13 @@
 
 const OpenAI = require('openai');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let openai;
+function getOpenAI() {
+  if (!openai) {
+    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  }
+  return openai;
+}
 
 /**
  * Qualifies a lead using AI.
@@ -54,7 +60,7 @@ RESPOND IN VALID JSON ONLY. No extra text. Format:
   "outreachMessage": "Personalized 3-4 sentence cold outreach message mentioning their business name, something specific from their reviews, and offering website services. Be friendly, not salesy. OR null if they have a website."
 }`;
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       response_format: { type: 'json_object' },
@@ -108,7 +114,7 @@ Rules:
 
 Return ONLY the message text, nothing else.`;
 
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.9,
