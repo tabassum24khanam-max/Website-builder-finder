@@ -936,10 +936,10 @@
             <input type="text" id="custom-category" placeholder="e.g. Pet Grooming, Spa, Yoga Studio…">
           </div>
           <div class="form-group">
-            <label class="form-label">Location</label>
+            <label class="form-label">City / Area</label>
             <div class="location-wrap">
               <div class="location-field-row">
-                <input type="text" id="location-input" autocomplete="off" placeholder="City name, area, or zip code e.g. Dubai Marina">
+                <input type="text" id="location-input" autocomplete="off" placeholder="e.g. Riyadh, Dubai Marina, Manhattan">
                 <button class="gps-btn" onclick="useCurrentLocation()" title="Use my current location">📍</button>
               </div>
               <div class="location-suggestions" id="location-suggestions"></div>
@@ -947,18 +947,37 @@
           </div>
         </div>
 
-        <div class="form-row-3" style="margin-bottom:20px;">
+        <div class="form-row-3" style="margin-bottom:16px;">
           <div class="form-group">
             <label class="form-label">Country</label>
             <input type="text" id="country-input" placeholder="e.g. UAE, Saudi Arabia">
           </div>
           <div class="form-group">
+            <label class="form-label">Zip / Postal Code <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional)</span></label>
+            <input type="text" id="zip-input" placeholder="e.g. 11564">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Street / Neighborhood <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional)</span></label>
+            <input type="text" id="street-input" placeholder="e.g. King Fahd Rd, SoHo">
+          </div>
+        </div>
+
+        <!-- Map preview -->
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Search Area <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(click on map to refine center, drag marker to adjust)</span></label>
+          <div id="picker-map" style="height:280px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);"></div>
+          <div id="picker-status" style="font-size:11.5px;color:var(--text-dim);margin-top:6px;">Type a city, use GPS, or click the map to set your search center.</div>
+        </div>
+
+        <div class="form-row-3" style="margin-bottom:16px;">
+          <div class="form-group">
             <label class="form-label">Search Radius</label>
             <select id="radius-select">
-              <option value="5km">5 km</option>
-              <option value="10km" selected>10 km</option>
-              <option value="20km">20 km</option>
-              <option value="whole_city">Whole city</option>
+              <option value="2">2 km</option>
+              <option value="5" selected>5 km</option>
+              <option value="10">10 km</option>
+              <option value="20">20 km</option>
+              <option value="50">50 km</option>
             </select>
           </div>
           <div class="form-group">
@@ -969,6 +988,13 @@
               <option value="30">30 leads</option>
               <option value="50">50 leads</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Filter</label>
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;">
+              <input type="checkbox" id="no-website-only" checked style="accent-color:var(--amber);width:16px;height:16px;cursor:pointer;">
+              <span>Only businesses without a website</span>
+            </label>
           </div>
         </div>
 
@@ -1340,13 +1366,22 @@ async function startSearch() {
   const category = customCat || state.selectedCategory;
   const location = document.getElementById('location-input').value.trim();
   const country = document.getElementById('country-input').value.trim();
-  const radius = document.getElementById('radius-select').value;
+  const zip = document.getElementById('zip-input').value.trim();
+  const street = document.getElementById('street-input').value.trim();
+  const radius_km = parseInt(document.getElementById('radius-select').value) || 5;
   const count = parseInt(document.getElementById('count-select').value);
+  const noWebsiteOnly = document.getElementById('no-website-only').checked;
 
   if (!category) { showToast('warn', '⚠️', 'Please select or enter a category.'); return; }
-  if (!location) { showToast('warn', '⚠️', 'Please enter a location.'); return; }
+  if (!location && !zip) { showToast('warn', '⚠️', 'Please enter a city or zip code.'); return; }
 
-  const payload = { category, location, country, radius, count };
+  const payload = {
+    category, location, country, zip, street,
+    radius_km, count,
+    lat: pickerState.lat || null,
+    lng: pickerState.lng || null,
+    no_website_only: noWebsiteOnly,
+  };
 
   document.getElementById('start-btn').disabled = true;
   clearLog();
@@ -2218,26 +2253,35 @@ async function fetchLocationSuggestions(query) {
 
 function showLocationSuggestions(results) {
   const box = document.getElementById('location-suggestions');
-  box.innerHTML = results.map(r => {
+  box.innerHTML = results.map((r, i) => {
     const city = r.address?.city || r.address?.town || r.address?.village || r.address?.county || '';
     const country = r.address?.country || '';
     const zip = r.address?.postcode || '';
     const mainName = city || r.display_name.split(',')[0];
     const sub = [zip, country].filter(Boolean).join(', ');
     const displayVal = city || r.display_name.split(',').slice(0,2).join(', ');
-    return `<div class="loc-suggestion" onclick="selectLocation('${escHtml(displayVal)}', '${escHtml(country)}')">
+    return `<div class="loc-suggestion" data-idx="${i}" data-display="${escHtml(displayVal)}" data-country="${escHtml(country)}" data-zip="${escHtml(zip)}" data-lat="${r.lat}" data-lng="${r.lon}">
       <div class="loc-suggestion-name">${escHtml(mainName)}</div>
       ${sub ? `<div class="loc-suggestion-sub">${escHtml(sub)}</div>` : ''}
     </div>`;
   }).join('');
+  box.querySelectorAll('.loc-suggestion').forEach(el => {
+    el.addEventListener('click', () => {
+      selectLocation(el.dataset.display, el.dataset.country, el.dataset.zip, parseFloat(el.dataset.lat), parseFloat(el.dataset.lng));
+    });
+  });
   box.classList.add('open');
 }
 
-function selectLocation(display, country) {
+function selectLocation(display, country, zip, lat, lng) {
   document.getElementById('location-input').value = display;
   if (country && !document.getElementById('country-input').value.trim()) {
     document.getElementById('country-input').value = country;
   }
+  if (zip && !document.getElementById('zip-input').value.trim()) {
+    document.getElementById('zip-input').value = zip;
+  }
+  if (lat && lng) setPickerLocation(lat, lng, display);
   closeLocationSuggestions();
 }
 
@@ -2257,10 +2301,15 @@ async function useCurrentLocation() {
       const addr = data.address || {};
       const city = addr.city || addr.town || addr.village || addr.county || data.display_name.split(',')[0];
       const country = addr.country || '';
+      const zip = addr.postcode || '';
       document.getElementById('location-input').value = city;
       if (country && !document.getElementById('country-input').value.trim()) {
         document.getElementById('country-input').value = country;
       }
+      if (zip && !document.getElementById('zip-input').value.trim()) {
+        document.getElementById('zip-input').value = zip;
+      }
+      setPickerLocation(lat, lng, city);
       showToast('success', '📍', `Location set to ${city}`);
     } catch { showToast('error', '❌', 'Could not reverse geocode location'); }
     btn.textContent = '📍';
@@ -2268,6 +2317,68 @@ async function useCurrentLocation() {
     showToast('error', '❌', 'Location access denied');
     btn.textContent = '📍';
   }, { timeout: 10000 });
+}
+
+// ============================================================
+//  PICKER MAP — visual location selection
+// ============================================================
+const pickerState = { lat: null, lng: null, map: null, marker: null };
+
+function initPickerMap() {
+  if (pickerState.map) return;
+  const el = document.getElementById('picker-map');
+  if (!el || typeof L === 'undefined') return;
+  pickerState.map = L.map('picker-map').setView([24.7136, 46.6753], 4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors', maxZoom: 19,
+  }).addTo(pickerState.map);
+  pickerState.map.on('click', async (e) => {
+    setPickerLocation(e.latlng.lat, e.latlng.lng, null);
+    // Reverse geocode to fill the city/zip fields
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${e.latlng.lat}&lon=${e.latlng.lng}&format=json`, { headers: { 'Accept-Language': 'en' } });
+      const data = await res.json();
+      const addr = data.address || {};
+      const city = addr.city || addr.town || addr.village || addr.county || '';
+      if (city && !document.getElementById('location-input').value.trim()) {
+        document.getElementById('location-input').value = city;
+      }
+      if (addr.country && !document.getElementById('country-input').value.trim()) {
+        document.getElementById('country-input').value = addr.country;
+      }
+      if (addr.postcode && !document.getElementById('zip-input').value.trim()) {
+        document.getElementById('zip-input').value = addr.postcode;
+      }
+      updatePickerStatus(`Pin: ${city || data.display_name?.split(',').slice(0,2).join(', ') || 'unknown'}`);
+    } catch {}
+  });
+  setTimeout(() => pickerState.map.invalidateSize(), 100);
+}
+
+function setPickerLocation(lat, lng, label) {
+  if (!pickerState.map) initPickerMap();
+  if (!pickerState.map) return;
+  pickerState.lat = lat;
+  pickerState.lng = lng;
+  if (pickerState.marker) {
+    pickerState.marker.setLatLng([lat, lng]);
+  } else {
+    pickerState.marker = L.marker([lat, lng], { draggable: true }).addTo(pickerState.map);
+    pickerState.marker.on('dragend', (e) => {
+      const p = e.target.getLatLng();
+      pickerState.lat = p.lat;
+      pickerState.lng = p.lng;
+      updatePickerStatus(`📍 ${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`);
+    });
+  }
+  pickerState.map.setView([lat, lng], 13);
+  setTimeout(() => pickerState.map.invalidateSize(), 50);
+  updatePickerStatus(label ? `📍 ${label}` : `📍 ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+}
+
+function updatePickerStatus(text) {
+  const el = document.getElementById('picker-status');
+  if (el) el.textContent = text;
 }
 
 // ============================================================
@@ -2506,6 +2617,7 @@ document.addEventListener('keydown', e => {
 async function init() {
   setStatus('disconnected', 'Connecting…');
   connectWS();
+  initPickerMap();
 
   // Load existing searches and leads from API
   try {

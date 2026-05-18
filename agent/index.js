@@ -1,7 +1,8 @@
 // Main agent orchestrator
-// For each search: launches browser → scrapes Maps → analyzes each business → scores → saves
+// For each search: discovers businesses via OSM Overpass → enriches each via Playwright → scores → saves
 const { chromium } = require('playwright');
 const { searchMaps } = require('./maps');
+const { findBusinessesOSM } = require('./osm');
 const { analyzeWebsite } = require('./website');
 const { findAndAnalyzeInstagram } = require('./instagram');
 const { findLinkedIn } = require('./linkedin');
@@ -22,7 +23,7 @@ function stopSearch(searchId) {
 }
 
 async function runSearch(searchConfig, broadcast) {
-  const { id: searchId, category, location, country, radius_km, limit_count } = searchConfig;
+  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only } = searchConfig;
 
   let stopped = false;
   activeSearches.set(searchId, { get stopped() { return stopped; }, set stopped(v) { stopped = v; } });
@@ -30,16 +31,71 @@ async function runSearch(searchConfig, broadcast) {
   const log = (msg, level = 'info') => broadcast({ type: 'agent_log', searchId, level, message: msg });
   const shouldStop = () => stopped;
 
-  log(`🚀 Starting agent search: "${category}" in ${location}, ${country}`, 'success');
+  log(`🚀 Starting agent search: "${category}" in ${location}${country ? ', ' + country : ''}`, 'success');
 
   let browser;
   let leadsFound = 0;
 
   try {
-    browser = await chromium.launch({
-      headless: HEADLESS,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
+    // Step 1 — discover businesses via OSM Overpass (reliable, no bot detection)
+    let businesses = [];
+    try {
+      businesses = await findBusinessesOSM({
+        category, location, country,
+        lat: lat || null, lng: lng || null,
+        radius_km: radius_km || 5,
+        limit: limit_count || 30,
+        noWebsiteOnly: no_website_only !== false,
+        log,
+      });
+    } catch (e) {
+      log(`⚠️  OpenStreetMap discovery failed: ${e.message}`, 'warn');
+    }
+
+    // Step 1b — fallback to Google Maps scrape if OSM returned nothing
+    if (!businesses.length) {
+      log(`⚠️  OSM returned no results. Falling back to Google Maps scrape...`, 'warn');
+      browser = await chromium.launch({
+        headless: HEADLESS,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+      const fallbackContext = await browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 800 },
+        locale: 'en-US',
+        extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+      });
+      await fallbackContext.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        window.chrome = { runtime: {} };
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
+      });
+      const fallbackPage = await fallbackContext.newPage();
+      try {
+        businesses = await searchMaps(fallbackPage, {
+          category, location, country, limit: limit_count, log,
+        });
+      } catch (e) {
+        log(`⚠️  Google Maps scrape also failed: ${e.message}`, 'warn');
+      }
+    }
+
+    if (!businesses.length) {
+      log('❌  No businesses found in either OSM or Google Maps. Try a wider radius or different location.', 'error');
+      q.updateSearchStatus.run({ id: searchId, status: 'done', leads_found: 0 });
+      broadcast({ type: 'search_complete', searchId, total: 0 });
+      return;
+    }
+
+    log(`📋 Discovered ${businesses.length} businesses. Starting deep analysis & enrichment...`, 'success');
+
+    // Set up browser for enrichment (Instagram, LinkedIn, email)
+    if (!browser) {
+      browser = await chromium.launch({
+        headless: HEADLESS,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+    }
 
     const context = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -48,29 +104,13 @@ async function runSearch(searchConfig, broadcast) {
       extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
     });
 
-    // Stealth: hide webdriver flag on all pages
     await context.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
       window.chrome = { runtime: {} };
       Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
     });
 
-    const mapsPage = await context.newPage();
-    const toolPage = await context.newPage(); // separate page for IG/LinkedIn/email
-
-    // Step 1 — search Maps
-    const businesses = await searchMaps(mapsPage, {
-      category, location, country, limit: limit_count, log,
-    });
-
-    if (!businesses.length) {
-      log('⚠️  No businesses found on Google Maps. Try different search terms.', 'warn');
-      q.updateSearchStatus.run({ id: searchId, status: 'done', leads_found: 0 });
-      broadcast({ type: 'search_complete', searchId, total: 0 });
-      return;
-    }
-
-    log(`📋 Found ${businesses.length} businesses. Starting deep analysis...`, 'success');
+    const toolPage = await context.newPage();
 
     // Step 2 — analyze each business
     for (const biz of businesses) {

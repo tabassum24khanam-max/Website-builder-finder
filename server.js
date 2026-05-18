@@ -58,8 +58,13 @@ app.delete('/api/searches/:id', (req, res) => {
 });
 
 app.post('/api/searches', (req, res) => {
-  const { category, location, country = '', radius_km, radius, limit_count, count } = req.body;
-  const effectiveRadius = parseInt(radius_km || radius) || 10;
+  const {
+    category, location, country = '',
+    radius_km, radius, limit_count, count,
+    lat, lng, zip, street,
+    no_website_only = true,
+  } = req.body;
+  const effectiveRadius = parseInt(radius_km || radius) || 5;
   const effectiveCount = parseInt(limit_count || count) || 20;
 
   if (!category || !location) {
@@ -69,9 +74,21 @@ app.post('/api/searches', (req, res) => {
     return res.status(400).json({ error: 'OpenAI API key not configured. Check your .env file.' });
   }
 
+  // Build a richer location string from zip/street if provided
+  const locationParts = [street, location, zip].filter(Boolean);
+  const fullLocation = locationParts.join(', ');
+
   const searchId = uuid();
-  q.insertSearch.run({ id: searchId, category, location, country, radius_km: effectiveRadius, limit_count: effectiveCount });
+  q.insertSearch.run({
+    id: searchId, category, location: fullLocation || location, country,
+    radius_km: effectiveRadius, limit_count: effectiveCount,
+  });
   const search = q.getSearch.get(searchId);
+
+  // Attach extra fields the agent needs but aren't in the DB schema
+  search.lat = parseFloat(lat) || null;
+  search.lng = parseFloat(lng) || null;
+  search.no_website_only = !!no_website_only;
 
   res.json({ success: true, search });
 
