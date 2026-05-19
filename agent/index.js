@@ -1,7 +1,8 @@
 // Main agent orchestrator
-// For each search: discovers businesses via OSM Overpass → enriches each via Playwright → scores → saves
+// Discovery: GPT-4o drives Google Maps (primary) → OSM Overpass fallback
+// Enrichment: Playwright → Instagram, LinkedIn, email → GPT-4o scorer
 const { chromium } = require('playwright');
-const { searchMaps } = require('./maps');
+const { findBusinessesGoogleMapsAI } = require('./maps-ai');
 const { findBusinessesOSM } = require('./osm');
 const { analyzeWebsite } = require('./website');
 const { findAndAnalyzeInstagram } = require('./instagram');
@@ -37,65 +38,51 @@ async function runSearch(searchConfig, broadcast) {
   let leadsFound = 0;
 
   try {
-    // Step 1 — discover businesses via OSM Overpass (reliable, no bot detection)
+    // Step 1 — AI-powered Google Maps discovery (GPT-4o drives a real browser)
     let businesses = [];
     try {
-      businesses = await findBusinessesOSM({
+      businesses = await findBusinessesGoogleMapsAI({
         category, location, country,
         lat: lat || null, lng: lng || null,
         radius_km: radius_km || 5,
-        limit: limit_count || 30,
-        noWebsiteOnly: no_website_only !== false,
+        limit: limit_count || 20,
         log,
       });
     } catch (e) {
-      log(`⚠️  OpenStreetMap discovery failed: ${e.message}`, 'warn');
+      log(`⚠️  AI Google Maps discovery failed: ${e.message}`, 'warn');
     }
 
-    // Step 1b — fallback to Google Maps scrape if OSM returned nothing
+    // Step 1b — fallback to OpenStreetMap if AI returned nothing
     if (!businesses.length) {
-      log(`⚠️  OSM returned no results. Falling back to Google Maps scrape...`, 'warn');
-      browser = await chromium.launch({
-        headless: HEADLESS,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      });
-      const fallbackContext = await browser.newContext({
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 800 },
-        locale: 'en-US',
-        extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
-      });
-      await fallbackContext.addInitScript(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        window.chrome = { runtime: {} };
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-      });
-      const fallbackPage = await fallbackContext.newPage();
+      log(`⚠️  Google Maps AI returned no results. Falling back to OpenStreetMap...`, 'warn');
       try {
-        businesses = await searchMaps(fallbackPage, {
-          category, location, country, limit: limit_count, log,
+        businesses = await findBusinessesOSM({
+          category, location, country,
+          lat: lat || null, lng: lng || null,
+          radius_km: radius_km || 5,
+          limit: limit_count || 30,
+          noWebsiteOnly: no_website_only !== false,
+          log,
         });
       } catch (e) {
-        log(`⚠️  Google Maps scrape also failed: ${e.message}`, 'warn');
+        log(`⚠️  OpenStreetMap also failed: ${e.message}`, 'warn');
       }
     }
 
     if (!businesses.length) {
-      log('❌  No businesses found in either OSM or Google Maps. Try a wider radius or different location.', 'error');
+      log('❌  No businesses found. Try a wider radius or different category.', 'error');
       q.updateSearchStatus.run({ id: searchId, status: 'done', leads_found: 0 });
       broadcast({ type: 'search_complete', searchId, total: 0 });
       return;
     }
 
-    log(`📋 Discovered ${businesses.length} businesses. Starting deep analysis & enrichment...`, 'success');
+    log(`📋 Discovered ${businesses.length} businesses. Starting enrichment...`, 'success');
 
     // Set up browser for enrichment (Instagram, LinkedIn, email)
-    if (!browser) {
-      browser = await chromium.launch({
-        headless: HEADLESS,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      });
-    }
+    browser = await chromium.launch({
+      headless: HEADLESS,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
 
     const context = await browser.newContext({
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
