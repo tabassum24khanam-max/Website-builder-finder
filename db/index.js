@@ -13,6 +13,7 @@ db.pragma('foreign_keys = ON');
 try { db.exec('ALTER TABLE leads ADD COLUMN lat REAL'); } catch (_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN lng REAL'); } catch (_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN photo_url TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN owner_phone TEXT'); } catch (_) {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS searches (
@@ -89,13 +90,13 @@ const q = {
       rating, review_count, instagram_handle, instagram_followers, instagram_posts,
       instagram_posts_per_month, instagram_last_post, instagram_bio, instagram_url,
       linkedin_company_url, linkedin_owner_name, linkedin_owner_url,
-      email, owner_email, ai_score, marketing_score, ai_reasoning, outreach_message, maps_url, lat, lng, photo_url
+      email, owner_email, ai_score, marketing_score, ai_reasoning, outreach_message, maps_url, lat, lng, photo_url, owner_phone
     ) VALUES (
       @id, @search_id, @name, @category, @city, @address, @phone, @website, @website_status,
       @rating, @review_count, @instagram_handle, @instagram_followers, @instagram_posts,
       @instagram_posts_per_month, @instagram_last_post, @instagram_bio, @instagram_url,
       @linkedin_company_url, @linkedin_owner_name, @linkedin_owner_url,
-      @email, @owner_email, @ai_score, @marketing_score, @ai_reasoning, @outreach_message, @maps_url, @lat, @lng, @photo_url
+      @email, @owner_email, @ai_score, @marketing_score, @ai_reasoning, @outreach_message, @maps_url, @lat, @lng, @photo_url, @owner_phone
     )
   `),
   updateLead: db.prepare(`

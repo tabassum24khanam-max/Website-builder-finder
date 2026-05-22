@@ -1712,8 +1712,12 @@ function openLeadModal(id) {
       <div class="section-label">Contact & Location</div>
       <div class="detail-grid">
         <div class="detail-item">
-          <div class="detail-label">Phone</div>
+          <div class="detail-label">Business Phone</div>
           <div class="detail-value">${lead.phone ? `<a href="tel:${escHtml(lead.phone)}">${escHtml(lead.phone)}</a>` : '<span class="text-dim">–</span>'}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Owner / Manager Phone</div>
+          <div class="detail-value">${(lead.owner_phone||lead.ownerPhone) ? `<a href="tel:${escHtml(lead.owner_phone||lead.ownerPhone)}">${escHtml(lead.owner_phone||lead.ownerPhone)}</a>` : '<span class="text-dim">–</span>'}</div>
         </div>
         <div class="detail-item">
           <div class="detail-label">Address</div>

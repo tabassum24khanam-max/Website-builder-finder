@@ -88,4 +88,61 @@ function fetchPage(url) {
   });
 }
 
-module.exports = { analyzeWebsite };
+// Looks for a contact/manager phone on the business website
+async function findOwnerPhone(websiteUrl, log) {
+  if (!websiteUrl) return null;
+  const base = websiteUrl.replace(/\/$/, '');
+
+  const CONTACT_PATHS = ['/contact', '/contact-us', '/about', '/about-us', '/team', '/staff', '/management'];
+
+  for (const path of CONTACT_PATHS) {
+    try {
+      const html = await fetchPage(base + path);
+      const phones = extractPhones(html);
+      if (phones.length) {
+        if (log) log(`📞 Owner phone found at ${path}: ${phones[0]}`);
+        return phones[0];
+      }
+    } catch (_) {}
+  }
+
+  // Fall back to main page
+  try {
+    const html = await fetchPage(websiteUrl);
+    const phones = extractPhones(html);
+    if (phones.length) return phones[0];
+  } catch (_) {}
+
+  return null;
+}
+
+function extractPhones(html) {
+  const phones = [];
+  const seen = new Set();
+
+  const telRe = /href="tel:([^"]+)"/gi;
+  let m;
+  while ((m = telRe.exec(html)) !== null) {
+    const p = decodeURIComponent(m[1]).replace(/\s+/g, '').trim();
+    if (p && !seen.has(p)) { seen.add(p); phones.push(p); }
+  }
+
+  if (!phones.length) {
+    // Strip tags first to avoid matching across attributes
+    const text = html.replace(/<[^>]+>/g, ' ');
+    const re = /(?<![.\d])(\+?[\d]{1,3}[\s.\-]?(?:\([\d]{1,4}\)[\s.\-]?)?[\d]{3,4}[\s.\-]?[\d]{3,4}[\s.\-]?[\d]{0,4})(?![.\d])/g;
+    while ((m = re.exec(text)) !== null) {
+      const p = m[1].replace(/\s+/g, ' ').trim();
+      const digits = p.replace(/\D/g, '');
+      if (digits.length >= 7 && !seen.has(p)) {
+        seen.add(p);
+        phones.push(p);
+        if (phones.length >= 3) break;
+      }
+    }
+  }
+
+  return phones;
+}
+
+module.exports = { analyzeWebsite, findOwnerPhone };

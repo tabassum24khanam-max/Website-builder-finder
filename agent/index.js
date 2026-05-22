@@ -4,7 +4,7 @@
 const { chromium } = require('playwright');
 const { findBusinessesGoogleMapsAI } = require('./maps-ai');
 const { findBusinessesOSM } = require('./osm');
-const { analyzeWebsite } = require('./website');
+const { analyzeWebsite, findOwnerPhone } = require('./website');
 const { findAndAnalyzeInstagram } = require('./instagram');
 const { findLinkedIn } = require('./linkedin');
 const { findEmail } = require('./email');
@@ -145,6 +145,7 @@ async function runSearch(searchConfig, broadcast) {
           linkedin_owner_url: lead.ownerLinkedinUrl || null,
           email: lead.email || null,
           owner_email: null,
+          owner_phone: lead.ownerPhone || null,
           ai_score: lead.aiScore || 0,
           marketing_score: lead.marketingScore || 0,
           ai_reasoning: lead.aiReasoning || null,
@@ -226,6 +227,18 @@ async function analyzeBusiness(biz, page, { searchId, location, country }, log, 
 
   if (shouldStop()) return null;
 
+  // Owner/manager phone from website contact page
+  let ownerPhone = null;
+  if (biz.website && websiteStatus !== 'none') {
+    log(`📞 Looking for owner/manager phone...`);
+    try {
+      ownerPhone = await findOwnerPhone(biz.website, log);
+    } catch (_) {}
+    if (!ownerPhone) log(`📞 Owner phone not found`);
+  }
+
+  if (shouldStop()) return null;
+
   // Score
   log(`🤖 Scoring lead...`);
   const score = await scoreLead({
@@ -246,6 +259,7 @@ async function analyzeBusiness(biz, page, { searchId, location, country }, log, 
     linkedinCompanyUrl: li.companyUrl,
     ownerName: li.ownerName,
     email,
+    ownerPhone,
   });
 
   return {
@@ -269,6 +283,7 @@ async function analyzeBusiness(biz, page, { searchId, location, country }, log, 
     ownerName: li.ownerName,
     ownerLinkedinUrl: li.ownerUrl,
     email,
+    ownerPhone,
     aiScore: score.aiScore,
     marketingScore: score.marketingScore,
     aiReasoning: score.aiReasoning,

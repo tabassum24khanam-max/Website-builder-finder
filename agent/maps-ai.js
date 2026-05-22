@@ -127,15 +127,23 @@ async function findBusinessesGoogleMapsAI({ category, location, country, lat, ln
     const searchTask = `You control a browser on Google Maps near ${fullLocation}.
 Find at least ${wantCount} ${category} businesses in this area.
 
+IMPORTANT: Only return LOCAL, independent, single-location businesses.
+DO NOT include large chains, franchises, or corporate brands such as:
+Starbucks, McDonald's, KFC, Subway, Costa, Tim Hortons, Pizza Hut, Burger King,
+Gym Nation, Body Masters, Anytime Fitness, Gold's Gym, Planet Fitness, Fitness First,
+or any other national or international chain with multiple locations.
+Focus ONLY on small local businesses that likely need a website or digital marketing.
+
 Steps:
 1. wait(2000)
-2. search_on_maps("${category}")
+2. search_on_maps("local ${category} ${location}")
 3. wait(3000)
 4. read_results
-5. If fewer than ${Math.min(limit, 10)} results visible, scroll_results(3) then read_results again
-6. return_names with ALL businesses you saw — aim for ${wantCount}
+5. scroll_results(3)
+6. read_results
+7. return_names with ALL local independent businesses you saw — aim for ${wantCount}
 
-Only return businesses you actually saw listed on the page.`;
+Only return local independent businesses you actually saw listed on the page.`;
 
     log(`🤖 AI searching for ${category} near ${fullLocation}...`);
     const rawList = await runSearchLoop(openai, page, searchTask, log);
@@ -309,11 +317,18 @@ async function executeSearchTool(page, name, args) {
 // ── Detail extraction from the open place panel ─────────────────────────────────
 
 async function extractPlaceDetails(page) {
-  // lat/lng from URL (most reliable source)
+  // !3d{lat}!4d{lng} in the URL data param is the actual place pin coords
+  // @{lat},{lng} is only the viewport center — less accurate
   const url = page.url();
   let lat = null, lng = null;
-  const coordM = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-  if (coordM) { lat = parseFloat(coordM[1]); lng = parseFloat(coordM[2]); }
+  const placeM = url.match(/!3d(-?\d+\.?\d*)!4d(-?\d+\.?\d*)/);
+  if (placeM) {
+    lat = parseFloat(placeM[1]);
+    lng = parseFloat(placeM[2]);
+  } else {
+    const viewM = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (viewM) { lat = parseFloat(viewM[1]); lng = parseFloat(viewM[2]); }
+  }
 
   const data = await page.evaluate(() => {
     const panel = document.querySelector('[role="main"]') || document.body;
@@ -329,11 +344,21 @@ async function extractPlaceDetails(page) {
       if (txt && txt.length < 100 && !txt.includes('\n')) { website = h; break; }
     }
 
-    // ── Phone: tel: link first, then regex ──────────────────
+    // ── Phone: aria-label button is most reliable ────────────
     let phone = null;
-    const telLink = panel.querySelector('a[href^="tel:"]');
-    if (telLink) {
-      phone = decodeURIComponent(telLink.href.replace('tel:', '')).trim();
+    for (const btn of panel.querySelectorAll('button[aria-label], [data-item-id*="phone"]')) {
+      const label = btn.getAttribute('aria-label') || btn.getAttribute('data-item-id') || '';
+      if (/phone/i.test(label)) {
+        const m = label.match(/(?:Phone[:\s]+)(.+)/i);
+        if (m) { phone = m[1].trim(); break; }
+        // Some buttons have the number as inner text
+        const inner = btn.innerText.trim();
+        if (/^[\+\d][\d\s\-\(\)\.]{5,}$/.test(inner)) { phone = inner; break; }
+      }
+    }
+    if (!phone) {
+      const telLink = panel.querySelector('a[href^="tel:"]');
+      if (telLink) phone = decodeURIComponent(telLink.href.replace('tel:', '')).trim();
     }
     if (!phone) {
       const txt = panel.innerText;
@@ -341,28 +366,26 @@ async function extractPlaceDetails(page) {
       if (pm) phone = pm[1].trim().replace(/\s+/g, ' ');
     }
 
-    // ── Address: class selectors then text patterns ──────────
+    // ── Address: aria-label button is most reliable ──────────
     let address = null;
-    const addrEl = panel.querySelector('.Io6YTe, [data-item-id*="address"] .fontBodyMedium, [data-item-id*="address"] span');
-    if (addrEl) {
-      address = addrEl.textContent.trim();
+    for (const btn of panel.querySelectorAll('button[aria-label], [data-item-id*="address"]')) {
+      const label = btn.getAttribute('aria-label') || '';
+      if (/address/i.test(label)) {
+        const m = label.match(/(?:Address[:\s]+)(.+)/i);
+        if (m) { address = m[1].trim(); break; }
+      }
     }
     if (!address) {
-      const lines = panel.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 5);
-      // Find a line that looks like an address (has a number + word, or city name)
-      const addrLine = lines.find(l =>
-        (/\d/.test(l) && l.length > 10 && l.length < 120) ||
-        /Saudi Arabia|Riyadh|Jeddah|Dubai|UAE|Street|St\.|Ave\.|Blvd/i.test(l)
-      );
-      if (addrLine) address = addrLine;
+      const addrEl = panel.querySelector('.Io6YTe, [data-item-id*="address"] .fontBodyMedium, [data-item-id*="address"] span');
+      if (addrEl) address = addrEl.textContent.trim();
     }
+    // No loose text-pattern fallback — it picks up rating/price lines
 
     // ── Photo: first googleusercontent image ─────────────────
     let photoUrl = null;
     for (const img of panel.querySelectorAll('img')) {
       const src = img.src || '';
       if (src.includes('googleusercontent.com') && !src.includes('=s0') && img.width > 80) {
-        // Get a reasonable size
         photoUrl = src.replace(/=w\d+/, '=w600').replace(/=h\d+/, '=h400');
         break;
       }
