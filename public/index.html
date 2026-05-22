@@ -1680,8 +1680,17 @@ function openLeadModal(id) {
   document.getElementById('modal-biz-sub').textContent =
     `${lead.category || ''}${lead.city ? ' · ' + lead.city : ''}${lead.country ? ' · ' + lead.country : ''}`;
 
+  const photoSrc = lead.photo_url || lead.photoUrl || '';
+
   const body = document.getElementById('modal-body');
   body.innerHTML = `
+    ${photoSrc ? `
+    <div style="margin-bottom:16px;border-radius:var(--radius);overflow:hidden;max-height:220px;background:var(--surface2);">
+      <img src="${escHtml(photoSrc)}" alt="${escHtml(name)}"
+           style="width:100%;object-fit:cover;max-height:220px;display:block;"
+           onerror="this.parentElement.style.display='none'">
+    </div>` : ''}
+
     <!-- Scores -->
     <div>
       <div class="section-label">Scores</div>
@@ -1731,32 +1740,43 @@ function openLeadModal(id) {
         </div>
         <div class="detail-item">
           <div class="detail-label">Instagram</div>
-          <div class="detail-value">${lead.instagram || lead.instagramHandle
-            ? `<a href="https://instagram.com/${escHtml((lead.instagram||lead.instagramHandle).replace('@',''))}" target="_blank">@${escHtml((lead.instagram||lead.instagramHandle).replace('@',''))}</a>`
-            : '<span class="text-dim">–</span>'}</div>
+          <div class="detail-value">${(()=>{
+            const h = (lead.instagram_handle||lead.instagramHandle||lead.instagram||'').replace('@','');
+            const url = lead.instagram_url||lead.instagramUrl||'';
+            if (!h && !url) return '<span class="text-dim">–</span>';
+            const link = url || `https://instagram.com/${h}`;
+            return `<a href="${escHtml(link)}" target="_blank">@${escHtml(h||'instagram')}</a>`;
+          })()}</div>
         </div>
         <div class="detail-item">
           <div class="detail-label">LinkedIn</div>
-          <div class="detail-value">${lead.linkedin ? `<a href="${escHtml(lead.linkedin)}" target="_blank">LinkedIn Profile</a>` : '<span class="text-dim">–</span>'}</div>
+          <div class="detail-value">${(()=>{
+            const url = lead.linkedin_company_url||lead.linkedinCompanyUrl||lead.linkedin||'';
+            return url ? `<a href="${escHtml(url)}" target="_blank">Company LinkedIn ↗</a>` : '<span class="text-dim">–</span>';
+          })()}</div>
         </div>
       </div>
     </div>
 
     <!-- Owner -->
-    ${lead.ownerName || lead.ownerLinkedin ? `
-    <div>
+    ${(()=>{
+      const oName = lead.linkedin_owner_name||lead.ownerName||'';
+      const oUrl = lead.linkedin_owner_url||lead.ownerLinkedinUrl||lead.ownerLinkedin||'';
+      if (!oName && !oUrl) return '';
+      return `<div>
       <div class="section-label">Owner</div>
       <div class="detail-grid">
         <div class="detail-item">
           <div class="detail-label">Owner Name</div>
-          <div class="detail-value">${escHtml(lead.ownerName || '–')}</div>
+          <div class="detail-value">${escHtml(oName||'–')}</div>
         </div>
         <div class="detail-item">
           <div class="detail-label">Owner LinkedIn</div>
-          <div class="detail-value">${lead.ownerLinkedin ? `<a href="${escHtml(lead.ownerLinkedin)}" target="_blank">LinkedIn</a>` : '–'}</div>
+          <div class="detail-value">${oUrl ? `<a href="${escHtml(oUrl)}" target="_blank">LinkedIn ↗</a>` : '–'}</div>
         </div>
       </div>
-    </div>` : ''}
+    </div>`;
+    })()}
 
     <!-- AI Reasoning -->
     ${lead.aiReasoning || lead.reasoning ? `
@@ -2329,8 +2349,9 @@ function initPickerMap() {
   const el = document.getElementById('picker-map');
   if (!el || typeof L === 'undefined') return;
   pickerState.map = L.map('picker-map').setView([24.7136, 46.6753], 4);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors', maxZoom: 19,
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+    maxZoom: 19,
   }).addTo(pickerState.map);
   pickerState.map.on('click', async (e) => {
     setPickerLocation(e.latlng.lat, e.latlng.lng, null);
@@ -2431,8 +2452,9 @@ function renderLeadsMap() {
 
   if (!leadsMapInstance) {
     leadsMapInstance = L.map('leads-map', { zoomControl: true });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors', maxZoom: 19
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+      maxZoom: 19,
     }).addTo(leadsMapInstance);
   } else {
     leadsMapMarkers.forEach(m => m.remove());
@@ -2472,54 +2494,34 @@ window.__openLead = function(id) {
 // ============================================================
 //  LEAD DETAIL MAP
 // ============================================================
-let detailMapInstance = null;
-let detailMapMarker = null;
-
 function initDetailMap(lead) {
-  const coords = getLeadCoords(lead);
   const mapEl = document.getElementById('lead-detail-map');
   const placeholder = document.getElementById('lead-map-placeholder');
   const mapsLink = document.getElementById('lead-maps-link');
+  const coords = getLeadCoords(lead);
 
-  if (!coords) {
+  if (coords) {
+    const [lat, lng] = coords;
+    mapEl.style.display = '';
+    placeholder.style.display = 'none';
+    // Real Google Maps embed — English, no API key required
+    mapEl.innerHTML = `<iframe
+      src="https://www.google.com/maps?q=${lat},${lng}&hl=en&z=17&output=embed"
+      style="width:100%;height:100%;min-height:400px;border:0;"
+      allowfullscreen loading="lazy">
+    </iframe>`;
+  } else {
     mapEl.style.display = 'none';
     placeholder.style.display = 'flex';
-    const mUrl = lead.mapsUrl || lead.maps_url || '';
+    const mUrl = lead.mapsUrl || lead.maps_url
+      || (lead.name ? `https://www.google.com/maps/search/${encodeURIComponent((lead.name || '') + ' ' + (lead.city || lead.location || ''))}&hl=en` : '');
     if (mUrl) {
       mapsLink.style.display = '';
       mapsLink.href = mUrl;
     } else {
       mapsLink.style.display = 'none';
     }
-    return;
   }
-
-  mapEl.style.display = '';
-  placeholder.style.display = 'none';
-
-  if (!detailMapInstance) {
-    detailMapInstance = L.map('lead-detail-map');
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors', maxZoom: 19
-    }).addTo(detailMapInstance);
-  }
-
-  if (detailMapMarker) detailMapMarker.remove();
-
-  const score = lead.aiScore ?? lead.score ?? 0;
-  const color = score >= 7 ? '#22c55e' : score >= 5 ? '#f0a500' : '#ef4444';
-  const icon = L.divIcon({
-    className: '',
-    html: `<div style="background:${color};color:#000;font-weight:700;font-size:12px;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid rgba(0,0,0,0.3);box-shadow:0 2px 8px rgba(0,0,0,0.5)">${score}</div>`,
-    iconSize: [32, 32], iconAnchor: [16, 16]
-  });
-
-  detailMapMarker = L.marker(coords, { icon }).addTo(detailMapInstance)
-    .bindPopup(`<strong>${escHtml(lead.businessName || lead.name || '')}</strong><br>${escHtml(lead.address || '')}`)
-    .openPopup();
-
-  detailMapInstance.setView(coords, 16);
-  detailMapInstance.invalidateSize();
 }
 
 // ============================================================
@@ -2560,8 +2562,9 @@ function renderHistoryMap() {
 
   if (!hmMapInstance) {
     hmMapInstance = L.map('hm-leads-map');
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors', maxZoom: 19
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+      maxZoom: 19,
     }).addTo(hmMapInstance);
   } else {
     hmMapMarkers.forEach(m => m.remove());

@@ -1,23 +1,21 @@
 // AI-powered Google Maps business discovery
-// Uses GPT-4o with a tool-calling loop to drive a real browser on Google Maps,
-// then returns structured business data for the enrichment pipeline.
+// Phase 1: GPT-4o drives browser to search and get business names
+// Phase 2: Playwright clicks each card to extract phone, website, address, coords, photo
 
 const { OpenAI } = require('openai');
 const { chromium } = require('playwright');
 
-const SCRAPE_MODEL = 'gpt-4o'; // needs reliable instruction-following; not mini
+const SCRAPE_MODEL = 'gpt-4o';
 
-const TOOLS = [
+const SEARCH_TOOLS = [
   {
     type: 'function',
     function: {
       name: 'search_on_maps',
-      description: 'Type a query into the Google Maps search box and submit it. Use this to search for a business category.',
+      description: 'Type a search query into the Google Maps search box and submit.',
       parameters: {
         type: 'object',
-        properties: {
-          query: { type: 'string', description: 'Search query, e.g. "cafes" or "barbershops"' },
-        },
+        properties: { query: { type: 'string' } },
         required: ['query'],
       },
     },
@@ -25,42 +23,38 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'read_current_results',
-      description: 'Read the current search results visible on the page. Returns card text for each result. Call this after searching or scrolling.',
+      name: 'read_results',
+      description: 'Read the current business result cards visible on the page.',
       parameters: { type: 'object', properties: {} },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'scroll_results_down',
-      description: 'Scroll down in the results panel to reveal more businesses.',
+      name: 'scroll_results',
+      description: 'Scroll the results panel down to load more businesses.',
       parameters: {
         type: 'object',
-        properties: {
-          times: { type: 'integer', description: 'How many times to scroll (1–5)', minimum: 1, maximum: 5 },
-        },
+        properties: { times: { type: 'integer', minimum: 1, maximum: 5 } },
       },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'wait_for_page',
-      description: 'Wait for the page or results to load.',
+      name: 'wait',
+      description: 'Wait for the page to load or update.',
       parameters: {
         type: 'object',
-        properties: {
-          ms: { type: 'integer', description: 'Milliseconds to wait (500–4000)', minimum: 500, maximum: 4000 },
-        },
+        properties: { ms: { type: 'integer', minimum: 500, maximum: 4000 } },
       },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'return_businesses',
-      description: 'Return the complete list of businesses found. Call this when you have collected all the results you can see.',
+      name: 'return_names',
+      description: 'Return all business names found. Call this once you have scrolled and read enough results.',
       parameters: {
         type: 'object',
         properties: {
@@ -70,9 +64,6 @@ const TOOLS = [
               type: 'object',
               properties: {
                 name: { type: 'string' },
-                address: { type: 'string' },
-                phone: { type: 'string' },
-                website: { type: 'string' },
                 rating: { type: 'number' },
                 review_count: { type: 'integer' },
               },
@@ -111,56 +102,115 @@ async function findBusinessesGoogleMapsAI({ category, location, country, lat, ln
 
     const page = await context.newPage();
 
-    // Navigate to Google Maps centered on coordinates, English locale forced
+    // Land on Google Maps at the target coordinates
     const zoom = radius_km <= 2 ? 16 : radius_km <= 5 ? 14 : radius_km <= 10 ? 13 : 12;
     const startUrl = (lat && lng)
       ? `https://www.google.com/maps/@${lat},${lng},${zoom}z?hl=en`
-      : `https://www.google.com/maps/search/${encodeURIComponent(category + ' ' + location + (country ? ', ' + country : ''))}?hl=en`;
+      : `https://www.google.com/maps?hl=en&q=${encodeURIComponent(location + (country ? ', ' + country : ''))}`;
 
-    log(`🌐 Navigating to Google Maps at ${lat && lng ? `(${lat.toFixed(4)}, ${lng.toFixed(4)})` : location}...`);
+    log(`🌐 Opening Google Maps...`);
     await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2500);
 
-    // Dismiss consent / cookie dialogs if present
+    // Dismiss consent / cookie dialogs
     try {
-      const accept = page.getByRole('button', { name: /accept all|agree|i agree/i });
-      if (await accept.isVisible({ timeout: 2000 })) {
-        await accept.click();
+      const acceptBtn = page.getByRole('button', { name: /accept all|agree/i });
+      if (await acceptBtn.isVisible({ timeout: 2000 })) {
+        await acceptBtn.click();
         await page.waitForTimeout(1000);
       }
     } catch (_) {}
 
+    // ── Phase 1: AI searches and collects business names ────────────────────────
     const fullLocation = `${location}${country ? ', ' + country : ''}`;
-    const task = `You are controlling a real browser on Google Maps. Your task: find ${limit} ${category} businesses near ${fullLocation}.
+    const wantCount = Math.min(limit * 2, 40);
+    const searchTask = `You control a browser on Google Maps near ${fullLocation}.
+Find at least ${wantCount} ${category} businesses in this area.
 
-The browser is already open at the correct location on Google Maps.
+Steps:
+1. wait(2000)
+2. search_on_maps("${category}")
+3. wait(3000)
+4. read_results
+5. If fewer than ${Math.min(limit, 10)} results visible, scroll_results(3) then read_results again
+6. return_names with ALL businesses you saw — aim for ${wantCount}
 
-Do this in order:
-1. call wait_for_page(1500)
-2. call search_on_maps with query "${category}"
-3. call wait_for_page(3000)
-4. call read_current_results — this shows you what businesses are listed
-5. If you see fewer than ${Math.min(limit, 8)} businesses, call scroll_results_down then read_current_results again
-6. Once you have enough, call return_businesses with every business you collected
+Only return businesses you actually saw listed on the page.`;
 
-When parsing results, extract: name (required), address, phone, website, rating (number), review_count (integer).
-Do NOT invent businesses — only return ones you actually read from the page.`;
+    log(`🤖 AI searching for ${category} near ${fullLocation}...`);
+    const rawList = await runSearchLoop(openai, page, searchTask, log);
+    log(`📋 AI found ${rawList.length} businesses — now extracting full details...`);
 
-    const raw = await runAgentLoop(openai, page, task, log);
+    if (!rawList.length) return [];
 
-    log(`🤖 AI agent collected ${raw.length} businesses from Google Maps`);
+    // ── Phase 2: Click each card for full detail ─────────────────────────────────
+    const enriched = [];
+    const toProcess = rawList.slice(0, wantCount);
 
-    return raw.slice(0, limit).map(b => ({
+    for (let i = 0; i < toProcess.length; i++) {
+      const biz = toProcess[i];
+      if (!biz.name) continue;
+
+      log(`📍 [${i + 1}/${toProcess.length}] Getting details: ${biz.name}`);
+
+      try {
+        // Find the result card in the DOM and click it
+        const card = page.locator('[role="feed"] [role="article"]')
+          .filter({ hasText: biz.name.slice(0, 25) })
+          .first();
+        await card.scrollIntoViewIfNeeded({ timeout: 3000 });
+        await page.waitForTimeout(300);
+        await card.click({ timeout: 6000 });
+        await page.waitForTimeout(2800);
+
+        const detailUrl = page.url();
+        if (detailUrl.includes('/maps/place/') || detailUrl !== startUrl) {
+          const detail = await extractPlaceDetails(page);
+          enriched.push({
+            name: biz.name,
+            rating: biz.rating || null,
+            reviewCount: biz.review_count || 0,
+            lat: detail.lat,
+            lng: detail.lng,
+            phone: detail.phone,
+            website: detail.website,
+            address: detail.address,
+            photoUrl: detail.photoUrl,
+            mapsUrl: detailUrl.includes('/maps/') ? detailUrl : null,
+          });
+          log(`   ✓ ${detail.phone ? '📞 ' + detail.phone.slice(0, 20) : 'no phone'} | ${detail.website ? '🌐 found' : 'no website'} | ${detail.lat ? '📍 coords' : 'no coords'}`);
+        } else {
+          log(`   ⚠️  Detail panel didn't open`, 'warn');
+          enriched.push({ name: biz.name, rating: biz.rating || null, reviewCount: biz.review_count || 0 });
+        }
+
+        // Navigate back to the search results
+        await page.goBack({ waitUntil: 'domcontentloaded', timeout: 15000 });
+        await page.waitForTimeout(1300);
+        try { await page.locator('[role="feed"]').waitFor({ timeout: 5000 }); } catch (_) {}
+
+      } catch (err) {
+        log(`   ⚠️  Could not get detail for ${biz.name}: ${err.message}`, 'warn');
+        enriched.push({ name: biz.name, rating: biz.rating || null, reviewCount: biz.review_count || 0 });
+        try { await page.goBack({ waitUntil: 'domcontentloaded', timeout: 8000 }); } catch (_) {}
+        await page.waitForTimeout(800);
+      }
+    }
+
+    log(`✅ Detail pass complete: ${enriched.length} businesses enriched`);
+
+    return enriched.map(b => ({
       name: b.name,
       category,
       address: b.address || null,
       phone: b.phone || null,
       website: b.website || null,
       rating: (typeof b.rating === 'number' && b.rating > 0) ? b.rating : null,
-      reviewCount: (typeof b.review_count === 'number') ? b.review_count : 0,
-      lat: null,
-      lng: null,
-      mapsUrl: null,
+      reviewCount: b.reviewCount || 0,
+      lat: b.lat || null,
+      lng: b.lng || null,
+      photoUrl: b.photoUrl || null,
+      mapsUrl: b.mapsUrl || null,
     }));
 
   } finally {
@@ -168,119 +218,172 @@ Do NOT invent businesses — only return ones you actually read from the page.`;
   }
 }
 
-async function runAgentLoop(openai, page, task, log, maxIterations = 20) {
+// ── Agent loop for Phase 1 ──────────────────────────────────────────────────────
+
+async function runSearchLoop(openai, page, task, log, maxIter = 15) {
   const messages = [
     {
       role: 'system',
-      content: 'You are a browser automation agent that finds businesses on Google Maps. Use tools step by step. Extract all businesses visible in results before calling return_businesses.',
+      content: 'You are a browser automation agent. Find local businesses on Google Maps using the tools provided. Always scroll to load more results before returning.',
     },
     { role: 'user', content: task },
   ];
 
-  for (let i = 0; i < maxIterations; i++) {
-    const response = await openai.chat.completions.create({
+  for (let i = 0; i < maxIter; i++) {
+    const resp = await openai.chat.completions.create({
       model: SCRAPE_MODEL,
       messages,
-      tools: TOOLS,
+      tools: SEARCH_TOOLS,
       tool_choice: 'auto',
     });
 
-    const msg = response.choices[0].message;
+    const msg = resp.choices[0].message;
     messages.push(msg);
 
-    if (!msg.tool_calls || msg.tool_calls.length === 0) {
-      log('⚠️  AI agent finished without returning businesses', 'warn');
-      break;
-    }
+    if (!msg.tool_calls?.length) break;
 
     const toolResults = [];
     for (const call of msg.tool_calls) {
       let args;
       try { args = JSON.parse(call.function.arguments); } catch (_) { args = {}; }
 
-      log(`🤖 AI → ${call.function.name}(${brief(args)})`);
+      log(`🤖 ${call.function.name}(${brief(args)})`);
 
-      if (call.function.name === 'return_businesses') {
-        return args.businesses || [];
-      }
+      if (call.function.name === 'return_names') return args.businesses || [];
 
-      const result = await executeTool(page, call.function.name, args);
-      const resultStr = JSON.stringify(result);
-      log(`   ↩ ${resultStr.slice(0, 160)}${resultStr.length > 160 ? '...' : ''}`);
-
-      toolResults.push({
-        role: 'tool',
-        tool_call_id: call.id,
-        content: resultStr.slice(0, 10000),
-      });
+      const result = await executeSearchTool(page, call.function.name, args);
+      log(`   ↩ ${JSON.stringify(result).slice(0, 120)}`);
+      toolResults.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result).slice(0, 8000) });
     }
-
     messages.push(...toolResults);
   }
 
   return [];
 }
 
-async function executeTool(page, name, args) {
-  try {
-    switch (name) {
-
-      case 'search_on_maps': {
-        const box = page.locator('#searchboxinput, input[aria-label*="Search"], input[name="q"]').first();
-        await box.waitFor({ timeout: 8000 });
-        await box.click();
-        await box.fill('');
-        await page.waitForTimeout(200);
-        await box.type(String(args.query), { delay: 55 });
-        await page.keyboard.press('Enter');
-        await page.waitForTimeout(1200);
-        return { success: true, searched_for: args.query };
-      }
-
-      case 'read_current_results': {
-        return await page.evaluate(() => {
-          const feed = document.querySelector('[role="feed"]');
-          if (feed) {
-            const cards = Array.from(feed.querySelectorAll('[role="article"]'))
-              .map(a => a.innerText.replace(/\s+/g, ' ').trim())
-              .filter(Boolean);
-            if (cards.length) return { card_count: cards.length, cards };
-            return { source: 'feed_text', content: feed.innerText.slice(0, 8000) };
-          }
-          const main = document.querySelector('[role="main"]');
-          return {
-            source: 'page_text',
-            content: (main || document.body).innerText.slice(0, 6000),
-            url: window.location.href,
-          };
-        });
-      }
-
-      case 'scroll_results_down': {
-        const times = Math.min(args.times || 3, 5);
-        for (let i = 0; i < times; i++) {
-          await page.evaluate(() => {
-            const feed = document.querySelector('[role="feed"]');
-            if (feed) feed.scrollBy(0, 500);
-            else document.documentElement.scrollBy(0, 500);
-          });
-          await page.waitForTimeout(700);
-        }
-        const count = await page.evaluate(() => document.querySelectorAll('[role="article"]').length);
-        return { scrolled: true, visible_cards: count };
-      }
-
-      case 'wait_for_page': {
-        await page.waitForTimeout(Math.min(args.ms || 2000, 4000));
-        return { waited_ms: args.ms };
-      }
-
-      default:
-        return { error: `Unknown tool: ${name}` };
+async function executeSearchTool(page, name, args) {
+  switch (name) {
+    case 'search_on_maps': {
+      const box = page.locator('#searchboxinput, input[aria-label*="Search"], input[name="q"]').first();
+      await box.waitFor({ timeout: 8000 });
+      await box.click();
+      await box.fill('');
+      await page.waitForTimeout(200);
+      await box.type(String(args.query), { delay: 55 });
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(1200);
+      return { ok: true, searched: args.query };
     }
-  } catch (err) {
-    return { error: err.message };
+    case 'read_results': {
+      return await page.evaluate(() => {
+        const feed = document.querySelector('[role="feed"]');
+        if (!feed) return { source: 'page', content: document.body.innerText.slice(0, 5000) };
+        const cards = Array.from(feed.querySelectorAll('[role="article"]'))
+          .map(a => a.innerText.replace(/\s+/g, ' ').trim())
+          .filter(Boolean);
+        return cards.length ? { card_count: cards.length, cards } : { source: 'feed', content: feed.innerText.slice(0, 6000) };
+      });
+    }
+    case 'scroll_results': {
+      const times = Math.min(args.times || 3, 5);
+      for (let i = 0; i < times; i++) {
+        await page.evaluate(() => {
+          const feed = document.querySelector('[role="feed"]');
+          if (feed) feed.scrollBy(0, 500);
+          else document.documentElement.scrollBy(0, 500);
+        });
+        await page.waitForTimeout(700);
+      }
+      const count = await page.evaluate(() => document.querySelectorAll('[role="article"]').length);
+      return { scrolled: true, visible_cards: count };
+    }
+    case 'wait': {
+      await page.waitForTimeout(Math.min(args.ms || 2000, 4000));
+      return { waited: args.ms };
+    }
+    default:
+      return { error: `Unknown: ${name}` };
   }
+}
+
+// ── Detail extraction from the open place panel ─────────────────────────────────
+
+async function extractPlaceDetails(page) {
+  // lat/lng from URL (most reliable source)
+  const url = page.url();
+  let lat = null, lng = null;
+  const coordM = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (coordM) { lat = parseFloat(coordM[1]); lng = parseFloat(coordM[2]); }
+
+  const data = await page.evaluate(() => {
+    const panel = document.querySelector('[role="main"]') || document.body;
+
+    // ── Website: first non-Google external link ──────────────
+    let website = null;
+    const skipDomains = ['google.', 'goo.gl', 'maps.app', 'accounts.', 'support.google', 'javascript:', 'play.google', 'apple.com/maps'];
+    for (const a of panel.querySelectorAll('a[href]')) {
+      const h = a.href || '';
+      if (!h.startsWith('http')) continue;
+      if (skipDomains.some(d => h.includes(d))) continue;
+      const txt = (a.textContent || '').trim();
+      if (txt && txt.length < 100 && !txt.includes('\n')) { website = h; break; }
+    }
+
+    // ── Phone: tel: link first, then regex ──────────────────
+    let phone = null;
+    const telLink = panel.querySelector('a[href^="tel:"]');
+    if (telLink) {
+      phone = decodeURIComponent(telLink.href.replace('tel:', '')).trim();
+    }
+    if (!phone) {
+      const txt = panel.innerText;
+      const pm = txt.match(/(?:^|\s)(\+?[\d][\d\s\-\(\)\.]{7,17}[\d])(?:\s|$)/m);
+      if (pm) phone = pm[1].trim().replace(/\s+/g, ' ');
+    }
+
+    // ── Address: class selectors then text patterns ──────────
+    let address = null;
+    const addrEl = panel.querySelector('.Io6YTe, [data-item-id*="address"] .fontBodyMedium, [data-item-id*="address"] span');
+    if (addrEl) {
+      address = addrEl.textContent.trim();
+    }
+    if (!address) {
+      const lines = panel.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+      // Find a line that looks like an address (has a number + word, or city name)
+      const addrLine = lines.find(l =>
+        (/\d/.test(l) && l.length > 10 && l.length < 120) ||
+        /Saudi Arabia|Riyadh|Jeddah|Dubai|UAE|Street|St\.|Ave\.|Blvd/i.test(l)
+      );
+      if (addrLine) address = addrLine;
+    }
+
+    // ── Photo: first googleusercontent image ─────────────────
+    let photoUrl = null;
+    for (const img of panel.querySelectorAll('img')) {
+      const src = img.src || '';
+      if (src.includes('googleusercontent.com') && !src.includes('=s0') && img.width > 80) {
+        // Get a reasonable size
+        photoUrl = src.replace(/=w\d+/, '=w600').replace(/=h\d+/, '=h400');
+        break;
+      }
+    }
+    if (!photoUrl) {
+      for (const el of panel.querySelectorAll('[style*="googleusercontent"]')) {
+        const bm = (el.style.backgroundImage || '').match(/url\("?(https?:\/\/[^"')]+)"?\)/);
+        if (bm) { photoUrl = bm[1]; break; }
+      }
+    }
+
+    return { website, phone, address, photoUrl };
+  });
+
+  return {
+    lat, lng,
+    phone: data.phone || null,
+    website: data.website || null,
+    address: data.address || null,
+    photoUrl: data.photoUrl || null,
+  };
 }
 
 function brief(args) {

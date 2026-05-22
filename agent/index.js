@@ -113,6 +113,12 @@ async function runSearch(searchConfig, broadcast) {
         const lead = await analyzeBusiness(biz, toolPage, { searchId, location, country }, log, shouldStop);
         if (!lead) continue;
 
+        // Skip businesses with a working website when the "no website only" filter is on
+        if (no_website_only && lead.websiteStatus === 'good') {
+          log(`⏭️  Skipping ${lead.name} — has a working website (filter is on)`, 'info');
+          continue;
+        }
+
         // Save to DB
         const leadId = uuid();
         q.insertLead.run({
@@ -146,6 +152,7 @@ async function runSearch(searchConfig, broadcast) {
           maps_url: lead.mapsUrl || null,
           lat: lead.lat || null,
           lng: lead.lng || null,
+          photo_url: lead.photoUrl || null,
         });
 
         leadsFound++;
@@ -269,6 +276,7 @@ async function analyzeBusiness(biz, page, { searchId, location, country }, log, 
     mapsUrl: biz.mapsUrl,
     lat: biz.lat,
     lng: biz.lng,
+    photoUrl: biz.photoUrl || null,
   };
 }
 
