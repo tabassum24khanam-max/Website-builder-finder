@@ -1,8 +1,8 @@
 // Main agent orchestrator
-// Discovery: GPT-4o drives Google Maps (primary) → OSM Overpass fallback
-// Enrichment: Playwright → Instagram, LinkedIn, email → GPT-4o scorer
-const { chromium } = require('playwright');
-const { findBusinessesGoogleMapsAI } = require('./maps-ai');
+// Discovery: Google Places API (primary) → OpenStreetMap fallback
+// Enrichment: HTTP only — no Playwright browser needed for enrichment
+
+const { findBusinessesPlaces } = require('./places-api');
 const { findBusinessesOSM } = require('./osm');
 const { analyzeWebsite, findOwnerPhone } = require('./website');
 const { findAndAnalyzeInstagram } = require('./instagram');
@@ -12,10 +12,9 @@ const { scoreLead } = require('./scorer');
 const { q } = require('../db');
 const { v4: uuid } = require('uuid');
 
-const DELAY = parseInt(process.env.SCRAPE_DELAY_MS || '1500');
-const HEADLESS = String(process.env.HEADLESS || '').toLowerCase() === 'true';
+const DELAY = parseInt(process.env.SCRAPE_DELAY_MS || '1000');
 
-// Active searches — searchId → { stop: fn }
+// Active searches — searchId → { stopped }
 const activeSearches = new Map();
 
 function stopSearch(searchId) {
@@ -32,36 +31,40 @@ async function runSearch(searchConfig, broadcast) {
   const log = (msg, level = 'info') => broadcast({ type: 'agent_log', searchId, level, message: msg });
   const shouldStop = () => stopped;
 
-  log(`🚀 Starting agent search: "${category}" in ${location}${country ? ', ' + country : ''}`, 'success');
+  log(`🚀 Starting search: "${category}" in ${location}${country ? ', ' + country : ''}`, 'success');
 
-  let browser;
   let leadsFound = 0;
 
   try {
-    // Step 1 — AI-powered Google Maps discovery (GPT-4o drives a real browser)
+    // Step 1 — Google Places API (structured data, no scraping)
     let businesses = [];
-    try {
-      businesses = await findBusinessesGoogleMapsAI({
-        category, location, country,
-        lat: lat || null, lng: lng || null,
-        radius_km: radius_km || 5,
-        limit: limit_count || 20,
-        log,
-      });
-    } catch (e) {
-      log(`⚠️  AI Google Maps discovery failed: ${e.message}`, 'warn');
+
+    if (process.env.GOOGLE_PLACES_API_KEY) {
+      try {
+        businesses = await findBusinessesPlaces({
+          category, location, country,
+          lat: lat || null, lng: lng || null,
+          radius_km: radius_km || 5,
+          limit: limit_count || 20,
+          log,
+        });
+      } catch (e) {
+        log(`⚠️  Google Places API failed: ${e.message}`, 'warn');
+      }
+    } else {
+      log(`⚠️  GOOGLE_PLACES_API_KEY not set — skipping Google Places`, 'warn');
     }
 
-    // Step 1b — fallback to OpenStreetMap if AI returned nothing
+    // Step 1b — OpenStreetMap fallback
     if (!businesses.length) {
-      log(`⚠️  Google Maps AI returned no results. Falling back to OpenStreetMap...`, 'warn');
+      log(`⚠️  Falling back to OpenStreetMap...`, 'warn');
       try {
         businesses = await findBusinessesOSM({
           category, location, country,
           lat: lat || null, lng: lng || null,
           radius_km: radius_km || 5,
           limit: limit_count || 30,
-          noWebsiteOnly: no_website_only !== false,
+          noWebsiteOnly: false,
           log,
         });
       } catch (e) {
@@ -76,50 +79,24 @@ async function runSearch(searchConfig, broadcast) {
       return;
     }
 
-    log(`📋 Discovered ${businesses.length} businesses. Starting enrichment...`, 'success');
+    log(`📋 Found ${businesses.length} businesses. Starting enrichment...`, 'success');
 
-    // Set up browser for enrichment (Instagram, LinkedIn, email)
-    browser = await chromium.launch({
-      headless: HEADLESS,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      viewport: { width: 1280, height: 800 },
-      locale: 'en-US',
-      extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
-    });
-
-    await context.addInitScript(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-      window.chrome = { runtime: {} };
-      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-    });
-
-    const toolPage = await context.newPage();
-
-    // Step 2 — analyze each business
+    // Step 2 — enrich each business (all HTTP, no browser)
     for (const biz of businesses) {
-      if (shouldStop()) {
-        log('■ Search stopped by user.', 'warn');
-        break;
-      }
+      if (shouldStop()) { log('■ Search stopped by user.', 'warn'); break; }
 
       log(`\n🔎 Analyzing: ${biz.name}`, 'info');
       broadcast({ type: 'agent_step', searchId, step: 'analyzing', businessName: biz.name });
 
       try {
-        const lead = await analyzeBusiness(biz, toolPage, { searchId, location, country }, log, shouldStop);
+        const lead = await analyzeBusiness(biz, { searchId, location, country }, log, shouldStop);
         if (!lead) continue;
 
-        // Skip businesses with a working website when the "no website only" filter is on
         if (no_website_only && lead.websiteStatus === 'good') {
-          log(`⏭️  Skipping ${lead.name} — has a working website (filter is on)`, 'info');
+          log(`⏭️  Skipping ${lead.name} — has a working website`, 'info');
           continue;
         }
 
-        // Save to DB
         const leadId = uuid();
         q.insertLead.run({
           id: leadId,
@@ -164,7 +141,6 @@ async function runSearch(searchConfig, broadcast) {
         log(`⚠️  Skipped ${biz.name}: ${err.message}`, 'warn');
       }
 
-      // Polite delay between businesses
       if (!shouldStop()) await delay(DELAY);
     }
 
@@ -178,12 +154,11 @@ async function runSearch(searchConfig, broadcast) {
     broadcast({ type: 'search_error', searchId, error: err.message });
   } finally {
     activeSearches.delete(searchId);
-    if (browser) await browser.close().catch(() => {});
   }
 }
 
-async function analyzeBusiness(biz, page, { searchId, location, country }, log, shouldStop) {
-  // Website analysis
+async function analyzeBusiness(biz, { location, country }, log, shouldStop) {
+  // Website
   let websiteStatus = 'none';
   let websiteSummary = '';
   if (biz.website) {
@@ -197,22 +172,21 @@ async function analyzeBusiness(biz, page, { searchId, location, country }, log, 
 
   if (shouldStop()) return null;
 
-  // Instagram
-  const ig = await findAndAnalyzeInstagram(page, {
+  // Instagram (HTTP only, no browser)
+  const ig = await findAndAnalyzeInstagram(null, {
     name: biz.name, city: location, country, websiteUrl: biz.website,
   }, log);
 
   if (ig.handle) {
-    const freq = ig.postsPerMonth ? `${ig.postsPerMonth} posts/month` : 'post frequency unknown';
-    log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers, ${freq}`);
+    log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
   } else {
     log(`📸 No Instagram found`);
   }
 
   if (shouldStop()) return null;
 
-  // LinkedIn
-  const li = await findLinkedIn(page, { name: biz.name, city: location, country }, log);
+  // LinkedIn (HTTP only, no browser)
+  const li = await findLinkedIn(null, { name: biz.name, city: location, country }, log);
 
   if (shouldStop()) return null;
 
@@ -227,19 +201,17 @@ async function analyzeBusiness(biz, page, { searchId, location, country }, log, 
 
   if (shouldStop()) return null;
 
-  // Owner/manager phone from website contact page
+  // Owner phone from website contact pages
   let ownerPhone = null;
   if (biz.website && websiteStatus !== 'none') {
     log(`📞 Looking for owner/manager phone...`);
-    try {
-      ownerPhone = await findOwnerPhone(biz.website, log);
-    } catch (_) {}
+    try { ownerPhone = await findOwnerPhone(biz.website, log); } catch (_) {}
     if (!ownerPhone) log(`📞 Owner phone not found`);
   }
 
   if (shouldStop()) return null;
 
-  // Score
+  // AI score
   log(`🤖 Scoring lead...`);
   const score = await scoreLead({
     name: biz.name,

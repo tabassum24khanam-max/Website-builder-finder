@@ -1,5 +1,8 @@
-// Instagram finder — searches Bing for Instagram handle, then scrapes profile
-const DELAY = parseInt(process.env.SCRAPE_DELAY_MS || '1500');
+// Instagram finder — no browser/Playwright needed
+// Priority: website link → Serper.dev Google search → HTTP meta scrape
+
+const https = require('https');
+const http = require('http');
 
 const BAD_HANDLES = new Set([
   'p', 'explore', 'reel', 'tv', 'stories', 'reels', 'accounts', 'about',
@@ -7,192 +10,187 @@ const BAD_HANDLES = new Set([
   'privacy', 'safety', 'support', 'directory', 'challenge',
 ]);
 
-async function findAndAnalyzeInstagram(page, { name, city, country, websiteUrl }, log) {
+async function findAndAnalyzeInstagram(_page, { name, city, country, websiteUrl }, log) {
   const result = {
     handle: null, url: null, followers: null, posts: null,
     postsPerMonth: null, lastPost: null, bio: null,
   };
 
-  // 1. If website IS Instagram, extract handle directly
-  if (websiteUrl && /instagram\.com\/([A-Za-z0-9._]+)/.test(websiteUrl)) {
-    const m = websiteUrl.match(/instagram\.com\/([A-Za-z0-9._]+)/);
+  // 1. Website URL is itself an Instagram page
+  if (websiteUrl) {
+    const m = websiteUrl.match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/);
     if (m && !BAD_HANDLES.has(m[1].toLowerCase())) {
       result.handle = m[1];
       result.url = `https://www.instagram.com/${m[1]}/`;
     }
   }
 
-  // 2. Check the website itself for Instagram links
+  // 2. Scrape website HTML for Instagram link
   if (!result.handle && websiteUrl) {
     try {
-      const handle = await extractInstagramFromWebsite(page, websiteUrl);
-      if (handle) {
-        result.handle = handle;
-        result.url = `https://www.instagram.com/${handle}/`;
-        log(`📸 Found Instagram link on website: @${handle}`);
+      const html = await fetchUrl(websiteUrl);
+      const m = html.match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?(?:"|'|<|\s|\/)/);
+      if (m && !BAD_HANDLES.has(m[1].toLowerCase())) {
+        result.handle = m[1];
+        result.url = `https://www.instagram.com/${m[1]}/`;
+        log(`📸 Instagram found on website: @${m[1]}`);
       }
     } catch (_) {}
   }
 
-  // 3. Search Bing for the Instagram page
+  // 3. Serper.dev Google search
   if (!result.handle) {
-    log(`📸 Searching Instagram for: ${name}`);
-    try {
-      result.handle = await searchInstagramViaBing(page, name, city, country);
-      if (result.handle) result.url = `https://www.instagram.com/${result.handle}/`;
-    } catch (_) {}
+    const serperKey = process.env.SERPER_API_KEY;
+    if (serperKey) {
+      try {
+        const loc = [city, country].filter(Boolean).join(' ');
+        const handle = await searchInstagramSerper(`"${name}" ${loc}`, serperKey, country);
+        if (handle) {
+          result.handle = handle;
+          result.url = `https://www.instagram.com/${handle}/`;
+          log(`📸 Found via Serper: @${handle}`);
+        }
+      } catch (_) {}
+    }
   }
 
-  if (!result.handle) {
-    log(`📸 No Instagram found`);
-    return result;
-  }
+  if (!result.handle) return result;
 
-  // 4. Scrape the profile for stats
+  // 4. Scrape Instagram profile meta (no browser — HTTP only)
   log(`📸 Analyzing @${result.handle}...`);
   try {
-    const profile = await scrapeInstagramProfile(page, result.handle);
+    const profile = await scrapeInstagramMeta(result.handle);
     Object.assign(result, profile);
-  } catch (err) {
-    log(`⚠️  Could not analyze @${result.handle}: ${err.message}`);
-  }
+  } catch (_) {}
 
   return result;
 }
 
-async function extractInstagramFromWebsite(page, websiteUrl) {
-  await page.goto(websiteUrl, { waitUntil: 'domcontentloaded', timeout: 12000 });
-  await delay(800);
+async function searchInstagramSerper(query, apiKey, country) {
+  const results = await serperSearch(`${query} site:instagram.com`, apiKey, country);
+  for (const r of results) {
+    // Check the direct link
+    const linkM = (r.link || '').match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/);
+    if (linkM && !BAD_HANDLES.has(linkM[1].toLowerCase())) return linkM[1];
 
-  const handle = await page.evaluate(() => {
-    for (const a of document.querySelectorAll('a[href]')) {
-      const href = (a.href || '').toLowerCase();
-      const m = href.match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/);
-      if (m) return m[1];
-    }
-    return null;
-  });
-
-  if (handle && !BAD_HANDLES.has(handle.toLowerCase())) return handle;
-  return null;
-}
-
-async function searchInstagramViaBing(page, name, city, country) {
-  const query = `"${name}" ${city || ''} ${country || ''} site:instagram.com`;
-
-  try {
-    await page.goto(`https://www.bing.com/search?q=${encodeURIComponent(query)}`,
-      { waitUntil: 'domcontentloaded', timeout: 18000 });
-    await delay(1200);
-
-    const html = await page.content();
-    const handle = extractHandleFromHtml(html);
-    if (handle) return handle;
-  } catch (_) {}
-
-  // DuckDuckGo fallback
-  try {
-    await page.goto(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-      { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await delay(1000);
-
-    const html = await page.content();
-    return extractHandleFromHtml(html);
-  } catch (_) {}
-
-  return null;
-}
-
-function extractHandleFromHtml(html) {
-  const re = /instagram\.com\/([A-Za-z0-9._]{2,30})\/?(?:\?|"|'|\s|<|\/|$)/g;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    const handle = m[1];
-    if (handle && !BAD_HANDLES.has(handle.toLowerCase()) && handle.length > 2) {
-      return handle;
+    // Check snippet/title for @handle mentions
+    const text = `${r.title || ''} ${r.snippet || ''}`;
+    const textM = text.match(/instagram\.com\/([A-Za-z0-9._]{2,30})|@([A-Za-z0-9._]{2,30})/);
+    if (textM) {
+      const handle = textM[1] || textM[2];
+      if (handle && !BAD_HANDLES.has(handle.toLowerCase())) return handle;
     }
   }
   return null;
 }
 
-async function scrapeInstagramProfile(page, handle) {
-  const profileUrl = `https://www.instagram.com/${handle}/`;
+async function scrapeInstagramMeta(handle) {
   const result = { followers: null, posts: null, postsPerMonth: null, lastPost: null, bio: null };
 
-  await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-  await delay(DELAY + Math.random() * 500);
-
-  // Title often contains: "username (@handle) • 1,234 Followers, 56 Following, 78 Posts"
   try {
-    const title = await page.title();
-    const fm = title.match(/([\d,k]+)\s*Followers?/i);
-    if (fm) result.followers = parseNumber(fm[1]);
-    const pm = title.match(/([\d,k]+)\s*Posts?/i);
-    if (pm) result.posts = parseNumber(pm[1]);
-  } catch (_) {}
-
-  // Meta description
-  try {
-    const meta = await page.$eval('meta[name="description"]', el => el.content).catch(() => '');
-    if (!result.followers) {
-      const fm = meta.match(/([\d,.k]+)\s*Followers?/i);
-      if (fm) result.followers = parseNumber(fm[1]);
-    }
-    if (!result.posts) {
-      const pm = meta.match(/([\d,.k]+)\s*Posts?/i);
-      if (pm) result.posts = parseNumber(pm[1]);
-    }
-    const bioMatch = meta.match(/^(.+?)\s*[-–]\s*[\d,]+ Followers/i);
-    if (bioMatch) result.bio = bioMatch[1].trim();
-  } catch (_) {}
-
-  // Embedded JSON data
-  try {
-    const scriptContent = await page.evaluate(() => {
-      for (const s of document.querySelectorAll('script[type="application/json"], script')) {
-        const txt = s.textContent || '';
-        if (txt.includes('edge_followed_by') || txt.includes('follower_count')) return txt;
-      }
-      return '';
+    const html = await fetchUrl(`https://www.instagram.com/${handle}/`, {
+      'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      'Accept-Language': 'en-US,en;q=0.9',
     });
-    if (scriptContent) {
-      const fm = scriptContent.match(/"edge_followed_by":\{"count":(\d+)\}|"follower_count":(\d+)/);
-      if (fm) result.followers = parseInt(fm[1] || fm[2]);
-      const pm = scriptContent.match(/"edge_owner_to_timeline_media":\{"count":(\d+)\}|"media_count":(\d+)/);
-      if (pm) result.posts = parseInt(pm[1] || pm[2]);
-      const dm = scriptContent.match(/"taken_at_timestamp":(\d+)/);
-      if (dm) {
-        result.lastPost = new Date(parseInt(dm[1]) * 1000).toISOString().split('T')[0];
-        const allDates = [...scriptContent.matchAll(/"taken_at_timestamp":(\d+)/g)]
-          .map(m => parseInt(m[1]) * 1000).sort((a, b) => b - a).slice(0, 12);
-        if (allDates.length >= 2) {
-          const spanMonths = (allDates[0] - allDates[allDates.length - 1]) / (30 * 24 * 60 * 60 * 1000);
-          if (spanMonths > 0) result.postsPerMonth = +(allDates.length / spanMonths).toFixed(1);
-        }
-      }
-    }
-  } catch (_) {}
 
-  // Bio fallback
-  if (!result.bio) {
-    try {
-      result.bio = await page.evaluate(() => {
-        const el = document.querySelector('span._ap3a, div.-vDIg, header section div span, h1 + div span');
-        return el ? el.textContent.trim() : null;
-      });
-    } catch (_) {}
-  }
+    // Meta description often: "X Followers, Y Following, Z Posts — See Instagram..."
+    const desc = html.match(/<meta[^>]+name="description"[^>]+content="([^"]+)"/i)?.[1]
+      || html.match(/<meta[^>]+content="([^"]+)"[^>]+name="description"/i)?.[1]
+      || '';
+
+    const fm = desc.match(/([\d,.]+[kKmM]?)\s*Followers?/i);
+    if (fm) result.followers = parseNumber(fm[1]);
+
+    const pm = desc.match(/([\d,.]+[kKmM]?)\s*Posts?/i);
+    if (pm) result.posts = parseNumber(pm[1]);
+
+    // Title format: "username (@handle) • X Followers, Y Following, Z Posts"
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '';
+    if (!result.followers) {
+      const tf = title.match(/([\d,.]+[kKmM]?)\s*Followers?/i);
+      if (tf) result.followers = parseNumber(tf[1]);
+    }
+
+    // Bio from meta
+    const bioM = desc.match(/^(.+?)\s*[-–•]\s*[\d,]+ Followers/i);
+    if (bioM) result.bio = bioM[1].trim();
+  } catch (_) {}
 
   return result;
+}
+
+async function serperSearch(query, apiKey, country) {
+  const body = JSON.stringify({
+    q: query,
+    gl: country ? getCountryCode(country) : 'sa',
+    hl: 'en',
+    num: 5,
+  });
+  return new Promise(resolve => {
+    const req = https.request({
+      hostname: 'google.serper.dev',
+      path: '/search',
+      method: 'POST',
+      headers: {
+        'X-API-KEY': apiKey,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    }, res => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(d).organic || []); }
+        catch (_) { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.write(body);
+    req.end();
+  });
+}
+
+function fetchUrl(url, extraHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    const lib = url.startsWith('https') ? https : http;
+    const req = lib.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36',
+        'Accept': 'text/html',
+        ...extraHeaders,
+      },
+    }, res => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        let next = res.headers.location;
+        if (next.startsWith('/')) {
+          try { const u = new URL(url); next = `${u.protocol}//${u.host}${next}`; } catch (_) {}
+        }
+        return fetchUrl(next, extraHeaders).then(resolve).catch(reject);
+      }
+      let d = '';
+      res.setEncoding('utf8');
+      res.on('data', c => { d += c; if (d.length > 200000) res.destroy(); });
+      res.on('end', () => resolve(d));
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
+  });
 }
 
 function parseNumber(str) {
-  const s = String(str).replace(/,/g, '').toLowerCase();
-  if (s.includes('k')) return Math.round(parseFloat(s) * 1000);
-  if (s.includes('m')) return Math.round(parseFloat(s) * 1000000);
+  const s = String(str).replace(/,/g, '').toLowerCase().trim();
+  if (s.endsWith('k')) return Math.round(parseFloat(s) * 1000);
+  if (s.endsWith('m')) return Math.round(parseFloat(s) * 1000000);
   return parseInt(s) || null;
 }
 
-function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+function getCountryCode(country) {
+  const map = { 'saudi arabia': 'sa', 'uae': 'ae', 'united arab emirates': 'ae',
+    'egypt': 'eg', 'kuwait': 'kw', 'bahrain': 'bh', 'qatar': 'qa', 'oman': 'om',
+    'jordan': 'jo', 'lebanon': 'lb', 'uk': 'gb', 'united kingdom': 'gb',
+    'usa': 'us', 'united states': 'us' };
+  return map[(country || '').toLowerCase()] || 'sa';
+}
 
 module.exports = { findAndAnalyzeInstagram };
