@@ -1,6 +1,6 @@
-// Business discovery using Serper.dev /places endpoint
-// Returns Google Maps-style results: name, phone, address, coords, rating, website
-// One API call per search — no scraping, works from cloud IPs
+// Business discovery using Serper.dev /places endpoint + enrichment
+// If /places returns incomplete data (no phone/website), we run one extra
+// /search query per business to fill in the gaps.
 
 const https = require('https');
 
@@ -14,6 +14,8 @@ const CHAIN_DENYLIST = [
   'papa john', 'little caesar', 'popeyes', 'taco bell', 'wendys',
   'applebee', 'ihop', 'denny', 'dairy queen', 'cold stone creamery',
   'century 21', 're/max', 'keller williams', 'coldwell banker',
+  'mr biryani', 'mr. biryani', 'biryani house', 'paradise biryani',
+  'bombay chowpatty', 'spicy spices',
 ];
 
 function isChain(name) {
@@ -21,11 +23,15 @@ function isChain(name) {
   for (const chain of CHAIN_DENYLIST) {
     if (lower.includes(chain)) return true;
   }
+  // "Branch" / "فرع" / branch numbers
   if (/\bbranch\b|فرع|فروع|\bno\.\s*\d+|\s#\s*\d+/i.test(name)) return true;
+  // Marketing chain listings: name with 2+ "|" separators and "best/top/leading"
+  const pipes = (name.match(/\|/g) || []).length;
+  if (pipes >= 2 && /\b(best|top|leading|premium|finest)\b/i.test(name)) return true;
   return false;
 }
 
-async function findBusinessesSerper({ category, location, country, radius_km = 5, limit = 20, log }) {
+async function findBusinessesSerper({ category, location, country, limit = 20, log }) {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) throw new Error('SERPER_API_KEY not set');
 
@@ -48,7 +54,7 @@ async function findBusinessesSerper({ category, location, country, radius_km = 5
 
   log(`📋 Found ${places.length} results — filtering chains...`);
 
-  const results = [];
+  const businesses = [];
   for (const p of places) {
     const name = p.title || '';
     if (!name) continue;
@@ -56,13 +62,12 @@ async function findBusinessesSerper({ category, location, country, radius_km = 5
       log(`⏭️  Chain skipped: ${name}`);
       continue;
     }
-
-    results.push({
+    businesses.push({
       name,
       category,
       address: p.address || null,
-      phone: p.phoneNumber || p.phone || null,
-      website: p.website || null,
+      phone: normalizePhone(p.phoneNumber || p.phone),
+      website: cleanUrl(p.website),
       rating: p.rating || null,
       reviewCount: p.ratingCount || 0,
       lat: p.latitude || null,
@@ -72,12 +77,103 @@ async function findBusinessesSerper({ category, location, country, radius_km = 5
         ? `https://www.google.com/maps?cid=${p.cid}`
         : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + (p.address || fullLocation))}`,
     });
-
-    if (results.length >= limit) break;
+    if (businesses.length >= limit) break;
   }
 
-  log(`✅ ${results.length} local independent businesses ready for enrichment`);
-  return results;
+  log(`✅ ${businesses.length} local independent businesses found`);
+  return businesses;
+}
+
+// Single follow-up Serper search to fill in missing phone / website / Instagram
+async function enrichMissingFields(business, location, country, log) {
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) return business;
+
+  const missing = [];
+  if (!business.phone) missing.push('phone');
+  if (!business.website) missing.push('website');
+  if (missing.length === 0) return business;
+
+  log(`🔎 Enriching ${business.name} (missing: ${missing.join(', ')})...`);
+
+  const body = JSON.stringify({
+    q: `"${business.name}" ${location}${country ? ' ' + country : ''}`,
+    gl: getCountryCode(country),
+    hl: 'en',
+    num: 8,
+  });
+
+  let data;
+  try { data = await serperRequest('/search', body, apiKey); }
+  catch (_) { return business; }
+
+  // Knowledge graph often has phone + website directly
+  const kg = data.knowledgeGraph || {};
+  if (!business.phone && kg.phoneNumber) business.phone = normalizePhone(kg.phoneNumber);
+  if (!business.website && kg.website) business.website = cleanUrl(kg.website);
+  if (!business.address && kg.address) business.address = kg.address;
+
+  // Scan organic results for phone (snippet) + plausible website
+  const bizNorm = normalizeForMatch(business.name);
+  for (const r of (data.organic || [])) {
+    const link = r.link || '';
+    const snippet = `${r.title || ''} ${r.snippet || ''}`;
+
+    // Phone from snippet
+    if (!business.phone) {
+      const phoneM = snippet.match(/(\+?\d{1,4}[\s\-().]{0,2}\d{1,4}[\s\-().]{0,2}\d{3,4}[\s\-().]{0,2}\d{3,4})/);
+      if (phoneM) {
+        const digits = phoneM[1].replace(/\D/g, '');
+        if (digits.length >= 8 && digits.length <= 15) business.phone = normalizePhone(phoneM[1]);
+      }
+    }
+
+    // Website: skip socials + directories, verify domain matches business name
+    if (!business.website && link && !isSocialOrDirectory(link)) {
+      try {
+        const host = new URL(link).hostname.replace(/^www\./, '');
+        const hostNorm = host.replace(/\.[a-z.]+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const snipMatch = snippet.toLowerCase().includes(business.name.toLowerCase().slice(0, Math.min(10, business.name.length)));
+        if ((bizNorm && hostNorm.includes(bizNorm.slice(0, Math.min(5, bizNorm.length)))) || snipMatch) {
+          business.website = cleanUrl(link);
+          log(`🌐 Found website via search: ${business.website}`);
+        }
+      } catch (_) {}
+    }
+
+    if (business.phone && business.website) break;
+  }
+
+  return business;
+}
+
+function normalizePhone(p) {
+  if (!p) return null;
+  const s = String(p).trim();
+  if (!s) return null;
+  // Keep + and digits and common separators, strip everything else
+  const cleaned = s.replace(/[^\d+\s().\-]/g, '').trim();
+  return cleaned.length >= 7 ? cleaned : null;
+}
+
+function cleanUrl(u) {
+  if (!u) return null;
+  let url = String(u).trim();
+  if (!url) return null;
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+  try { new URL(url); return url; } catch (_) { return null; }
+}
+
+function isSocialOrDirectory(url) {
+  return /instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|youtube\.com|twitter\.com|x\.com|snapchat\.com|pinterest\.com|tripadvisor\.|yelp\.|foursquare\.|zomato\.|trustpilot\.|google\.[a-z.]+\/maps|maps\.google|wikipedia\.org|wikiwand\.|wikidata\.|yelp\.com|opentable\.|grubhub\.|doordash\.|ubereats\.|talabat\.|hungerstation\.|noon\.com|amazon\.|booking\.com|agoda\.|expedia\.|justdial\.|sulekha\.|menupages\./i.test(url);
+}
+
+function normalizeForMatch(name) {
+  return (name || '').toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\b(cafe|restaurant|bistro|kitchen|coffee|coffeehouse|shop|salon|gym|fitness|spa|boutique|store|the|and|of|sa|ksa|uae|al|el|de|la|le|los|las)\b/gi, '')
+    .replace(/\s+/g, '')
+    .trim();
 }
 
 function serperRequest(path, body, apiKey) {
@@ -97,13 +193,13 @@ function serperRequest(path, body, apiKey) {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(d);
-          if (parsed.message && !parsed.places) reject(new Error(parsed.message));
+          if (parsed.message && !parsed.places && !parsed.organic) reject(new Error(parsed.message));
           else resolve(parsed);
         } catch (e) { reject(new Error(`Parse error: ${d.slice(0, 200)}`)); }
       });
     });
     req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.setTimeout(12000, () => { req.destroy(); reject(new Error('timeout')); });
     req.write(body);
     req.end();
   });
@@ -119,4 +215,4 @@ function getCountryCode(country) {
   return map[(country || '').toLowerCase()] || 'sa';
 }
 
-module.exports = { findBusinessesSerper };
+module.exports = { findBusinessesSerper, enrichMissingFields, normalizeForMatch, isSocialOrDirectory };

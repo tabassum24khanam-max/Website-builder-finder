@@ -1,8 +1,13 @@
 // Main agent orchestrator
-// Discovery: Serper /places (primary) → Google Places API → OpenStreetMap fallback
-// Enrichment: HTTP only — no Playwright browser needed
+// Strict flow:
+//   1. Serper /places → list of businesses
+//   2. For each: enrich missing phone/website via Serper /search
+//   3. Website? → analyze + extract owner phone from contact page
+//   4. Instagram? → strict-verified handle + stats/bio from search snippet + extract phone/email from bio
+//   5. LinkedIn (only if verified match)
+//   6. Score + save (skip if NO contact data found at all)
 
-const { findBusinessesSerper } = require('./serper-places');
+const { findBusinessesSerper, enrichMissingFields } = require('./serper-places');
 const { findBusinessesPlaces } = require('./places-api');
 const { findBusinessesOSM } = require('./osm');
 const { analyzeWebsite, findOwnerPhone } = require('./website');
@@ -13,9 +18,8 @@ const { scoreLead } = require('./scorer');
 const { q } = require('../db');
 const { v4: uuid } = require('uuid');
 
-const DELAY = parseInt(process.env.SCRAPE_DELAY_MS || '1000');
+const DELAY = parseInt(process.env.SCRAPE_DELAY_MS || '800');
 
-// Active searches — searchId → { stopped }
 const activeSearches = new Map();
 
 function stopSearch(searchId) {
@@ -37,13 +41,11 @@ async function runSearch(searchConfig, broadcast) {
   let leadsFound = 0;
 
   try {
-    // Step 1 — Serper /places (Google Maps results via API — phone, address, coords included)
+    // Step 1 — Serper /places (Google Maps results via API)
     let businesses = [];
-
     try {
       businesses = await findBusinessesSerper({
         category, location, country,
-        radius_km: radius_km || 5,
         limit: limit_count || 20,
         log,
       });
@@ -85,7 +87,7 @@ async function runSearch(searchConfig, broadcast) {
     }
 
     if (!businesses.length) {
-      log('❌  No businesses found. Try a wider radius or different category.', 'error');
+      log('❌  No businesses found. Try a different category or location.', 'error');
       q.updateSearchStatus.run({ id: searchId, status: 'done', leads_found: 0 });
       broadcast({ type: 'search_complete', searchId, total: 0 });
       return;
@@ -93,7 +95,6 @@ async function runSearch(searchConfig, broadcast) {
 
     log(`📋 Found ${businesses.length} businesses. Starting enrichment...`, 'success');
 
-    // Step 2 — enrich each business (all HTTP, no browser)
     for (const biz of businesses) {
       if (shouldStop()) { log('■ Search stopped by user.', 'warn'); break; }
 
@@ -101,11 +102,28 @@ async function runSearch(searchConfig, broadcast) {
       broadcast({ type: 'agent_step', searchId, step: 'analyzing', businessName: biz.name });
 
       try {
-        const lead = await analyzeBusiness(biz, { searchId, location, country }, log, shouldStop);
+        // Fill in missing phone / website from Google search (one extra Serper call)
+        await enrichMissingFields(biz, location, country, log);
+
+        // If "no website only" filter is on and the business has a website → skip immediately
+        if (no_website_only && biz.website) {
+          log(`⏭️  Skipping ${biz.name} — has website: ${biz.website}`, 'info');
+          continue;
+        }
+
+        const lead = await analyzeBusiness(biz, { location, country }, log, shouldStop);
         if (!lead) continue;
 
+        // Skip if website found during analysis and filter is on
         if (no_website_only && lead.websiteStatus === 'good') {
           log(`⏭️  Skipping ${lead.name} — has a working website`, 'info');
+          continue;
+        }
+
+        // Skip if absolutely no useful contact info (saves "dead" leads like Mr Biryani)
+        const hasContact = lead.phone || lead.email || lead.instagramHandle || lead.linkedinCompanyUrl || lead.website || lead.ownerPhone;
+        if (!hasContact) {
+          log(`⏭️  Skipping ${lead.name} — no contact info found anywhere`, 'warn');
           continue;
         }
 
@@ -170,7 +188,7 @@ async function runSearch(searchConfig, broadcast) {
 }
 
 async function analyzeBusiness(biz, { location, country }, log, shouldStop) {
-  // Website
+  // === Step A: Website ===
   let websiteStatus = 'none';
   let websiteSummary = '';
   if (biz.website) {
@@ -179,51 +197,55 @@ async function analyzeBusiness(biz, { location, country }, log, shouldStop) {
     websiteSummary = ws.summary;
     log(`🌐 Website: ${websiteStatus} — ${websiteSummary}`);
   } else {
-    log(`🚫 No website listed`);
+    log(`🚫 No website found`);
   }
 
   if (shouldStop()) return null;
 
-  // Instagram (HTTP only, no browser)
+  // === Step B: Owner phone from website contact page ===
+  let ownerPhone = null;
+  if (biz.website && websiteStatus !== 'none' && websiteStatus !== 'social_only' && websiteStatus !== 'linktree') {
+    log(`📞 Looking for owner/manager phone on website...`);
+    try { ownerPhone = await findOwnerPhone(biz.website, log); } catch (_) {}
+    if (!ownerPhone) log(`📞 No phone on website contact page`);
+  }
+
+  if (shouldStop()) return null;
+
+  // === Step C: Instagram (strict verification, no instagram.com HTTP) ===
   const ig = await findAndAnalyzeInstagram(null, {
     name: biz.name, city: location, country, websiteUrl: biz.website,
   }, log);
 
   if (ig.handle) {
-    log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
-  } else {
-    log(`📸 No Instagram found`);
+    log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers, ${ig.posts || '?'} posts`);
   }
 
   if (shouldStop()) return null;
 
-  // LinkedIn (HTTP only, no browser)
+  // === Step D: LinkedIn (verified match only) ===
   const li = await findLinkedIn(null, { name: biz.name, city: location, country }, log);
 
   if (shouldStop()) return null;
 
-  // Email
+  // === Step E: Email (from website / IG bio / search) ===
   log(`📬 Looking for email...`);
   const email = await findEmail({
     name: biz.name, city: location, country,
     website: biz.website,
     instagramBio: ig.bio,
   }, log);
-  if (!email) log(`📬 Email not found`);
-
-  if (shouldStop()) return null;
-
-  // Owner phone from website contact pages
-  let ownerPhone = null;
-  if (biz.website && websiteStatus !== 'none') {
-    log(`📞 Looking for owner/manager phone...`);
-    try { ownerPhone = await findOwnerPhone(biz.website, log); } catch (_) {}
-    if (!ownerPhone) log(`📞 Owner phone not found`);
+  if (!email && ig.emailFromBio) {
+    log(`📬 Using email from IG bio`);
   }
 
   if (shouldStop()) return null;
 
-  // AI score
+  // === Phone cascade: business phone → IG bio phone → owner phone from website ===
+  const businessPhone = biz.phone || ig.phoneFromBio || null;
+  const finalOwnerPhone = ownerPhone || (biz.phone ? ig.phoneFromBio : null);
+
+  // === Score ===
   log(`🤖 Scoring lead...`);
   const score = await scoreLead({
     name: biz.name,
@@ -231,7 +253,7 @@ async function analyzeBusiness(biz, { location, country }, log, shouldStop) {
     city: location,
     country,
     address: biz.address,
-    phone: biz.phone,
+    phone: businessPhone,
     website: biz.website,
     websiteStatus,
     rating: biz.rating,
@@ -242,15 +264,15 @@ async function analyzeBusiness(biz, { location, country }, log, shouldStop) {
     instagramLastPost: ig.lastPost,
     linkedinCompanyUrl: li.companyUrl,
     ownerName: li.ownerName,
-    email,
-    ownerPhone,
+    email: email || ig.emailFromBio,
+    ownerPhone: finalOwnerPhone,
   });
 
   return {
     name: biz.name,
     category: biz.category,
     address: biz.address,
-    phone: biz.phone,
+    phone: businessPhone,
     website: biz.website,
     websiteStatus,
     websiteSummary,
@@ -266,8 +288,8 @@ async function analyzeBusiness(biz, { location, country }, log, shouldStop) {
     linkedinCompanyUrl: li.companyUrl,
     ownerName: li.ownerName,
     ownerLinkedinUrl: li.ownerUrl,
-    email,
-    ownerPhone,
+    email: email || ig.emailFromBio || null,
+    ownerPhone: finalOwnerPhone,
     aiScore: score.aiScore,
     marketingScore: score.marketingScore,
     aiReasoning: score.aiReasoning,
