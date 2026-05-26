@@ -1,7 +1,8 @@
 // Main agent orchestrator
-// Discovery: Google Places API (primary) → OpenStreetMap fallback
-// Enrichment: HTTP only — no Playwright browser needed for enrichment
+// Discovery: Serper /places (primary) → Google Places API → OpenStreetMap fallback
+// Enrichment: HTTP only — no Playwright browser needed
 
+const { findBusinessesSerper } = require('./serper-places');
 const { findBusinessesPlaces } = require('./places-api');
 const { findBusinessesOSM } = require('./osm');
 const { analyzeWebsite, findOwnerPhone } = require('./website');
@@ -36,10 +37,23 @@ async function runSearch(searchConfig, broadcast) {
   let leadsFound = 0;
 
   try {
-    // Step 1 — Google Places API (structured data, no scraping)
+    // Step 1 — Serper /places (Google Maps results via API — phone, address, coords included)
     let businesses = [];
 
-    if (process.env.GOOGLE_PLACES_API_KEY) {
+    try {
+      businesses = await findBusinessesSerper({
+        category, location, country,
+        radius_km: radius_km || 5,
+        limit: limit_count || 20,
+        log,
+      });
+    } catch (e) {
+      log(`⚠️  Serper Places failed: ${e.message}`, 'warn');
+    }
+
+    // Step 1b — Google Places API if Serper returned nothing and key is set
+    if (!businesses.length && process.env.GOOGLE_PLACES_API_KEY) {
+      log(`⚠️  Trying Google Places API...`, 'warn');
       try {
         businesses = await findBusinessesPlaces({
           category, location, country,
@@ -51,11 +65,9 @@ async function runSearch(searchConfig, broadcast) {
       } catch (e) {
         log(`⚠️  Google Places API failed: ${e.message}`, 'warn');
       }
-    } else {
-      log(`⚠️  GOOGLE_PLACES_API_KEY not set — skipping Google Places`, 'warn');
     }
 
-    // Step 1b — OpenStreetMap fallback
+    // Step 1c — OpenStreetMap last resort
     if (!businesses.length) {
       log(`⚠️  Falling back to OpenStreetMap...`, 'warn');
       try {
