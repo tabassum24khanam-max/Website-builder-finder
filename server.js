@@ -67,9 +67,12 @@ app.post('/api/searches', (req, res) => {
   const effectiveRadius = parseInt(radius_km || radius) || 5;
   const effectiveCount = parseInt(limit_count || count) || 20;
 
-  // Keep the location CLEAN — stuffing street+zip into the search query was a
-  // root cause of "0 results". Precise targeting comes from lat/lng below.
+  // The Serper `location` param only handles city-level targeting — neighborhoods
+  // and zip codes are ignored. Keep the primary location CLEAN (city or zip only).
+  // The `street` field holds the neighborhood/district; it goes into `q` via the
+  // AI query generator, not the `location` param.
   const cleanLocation = (location || zip || '').trim();
+  const neighborhood = (street || '').trim() || null;
   if (!category || !cleanLocation) {
     return res.status(400).json({ error: 'category and a location (city or zip) are required' });
   }
@@ -88,6 +91,7 @@ app.post('/api/searches', (req, res) => {
   search.lat = parseFloat(lat) || null;
   search.lng = parseFloat(lng) || null;
   search.no_website_only = !!no_website_only;
+  search.neighborhood = neighborhood;
 
   res.json({ success: true, search });
 

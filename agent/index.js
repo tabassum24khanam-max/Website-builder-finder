@@ -32,7 +32,7 @@ function stopSearch(searchId) {
 }
 
 async function runSearch(searchConfig, broadcast) {
-  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only } = searchConfig;
+  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only, neighborhood } = searchConfig;
 
   const state = { stopped: false };
   activeSearches.set(searchId, state);
@@ -43,7 +43,7 @@ async function runSearch(searchConfig, broadcast) {
   let leadsFound = 0;
 
   try {
-    const businesses = await discover({ category, location, country, lat, lng, radius_km, limit_count, log });
+    const businesses = await discover({ category, location, neighborhood, country, lat, lng, radius_km, limit_count, log });
     if (!businesses.length) {
       log('❌  No businesses found. Try a different category or location.', 'error');
       q.updateSearchStatus.run({ id: searchId, status: 'done', leads_found: 0 });
@@ -88,10 +88,10 @@ async function runSearch(searchConfig, broadcast) {
 
 // ── Discovery with fallbacks ─────────────────────────────────────────────────
 
-async function discover({ category, location, country, lat, lng, radius_km, limit_count, log }) {
-  // 1. Serper /places (primary)
+async function discover({ category, location, neighborhood, country, lat, lng, radius_km, limit_count, log }) {
+  // 1. Serper /places (primary) — neighborhood goes into `q` via AI query variants
   try {
-    const b = await findBusinessesSerper({ category, location, country, lat, lng, limit: limit_count || 20, log });
+    const b = await findBusinessesSerper({ category, location, neighborhood, country, lat, lng, limit: limit_count || 20, log });
     if (b.length) return b;
   } catch (e) { log(`⚠️  Serper Places failed: ${e.message}`, 'warn'); }
 

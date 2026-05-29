@@ -69,6 +69,8 @@ async function findInstagram({ name, city, country, websiteUrl, hint }, log) {
   return result;
 }
 
+const IG_RESERVED = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'about', 'help', 'legal', 'press', 'api', 'blog', 'developers', 'privacy', 'safety', 'support', 'directory', 'challenge', 'popular', 'web', 'emails', 'session']);
+
 async function searchInstagram(name, city, country, log) {
   const loc = [city, country].filter(Boolean).join(' ');
   const data = await serper('/search', {
@@ -77,13 +79,24 @@ async function searchInstagram(name, city, country, log) {
   }, process.env.SERPER_API_KEY, 10000);
 
   for (const r of (data.organic || [])) {
-    const m = (r.link || '').match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/i);
-    if (!m || !verifyHandle(m[1], name)) continue;
     const snippet = `${r.title || ''} ${r.snippet || ''}`;
-    log(`📸 Verified Instagram: @${m[1]}`);
+
+    // Extract from URL path first
+    const um = (r.link || '').match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/i);
+    let handle = (um && !IG_RESERVED.has(um[1].toLowerCase())) ? um[1] : null;
+
+    // Fall back to handle in title/snippet: "Name (@handle) • Instagram"
+    // This is the primary pattern when Google indexes reels rather than profiles
+    if (!handle) {
+      const tm = snippet.match(/\(@([A-Za-z0-9._]{2,30})\)/);
+      if (tm) handle = tm[1];
+    }
+
+    if (!handle || !verifyHandle(handle, name)) continue;
+    log(`📸 Verified Instagram: @${handle}`);
     return {
-      handle: m[1],
-      url: `https://www.instagram.com/${m[1]}/`,
+      handle,
+      url: `https://www.instagram.com/${handle}/`,
       followers: parseFollowers(snippet),
       posts: parsePosts(snippet),
       bio: snippet.slice(0, 300),
