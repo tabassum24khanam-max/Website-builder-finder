@@ -1,105 +1,55 @@
-// LinkedIn finder — Serper search + verification that result matches business
+// LinkedIn finder — Serper search + verification that the result matches the
+// business. Most small local businesses have no LinkedIn; returning nothing is
+// the normal, correct outcome (better empty than a wrong company).
 
-const https = require('https');
-const { normalizeForMatch } = require('./serper-places');
+const { serper, normalizeForMatch, getCountryCode, cleanSearchName } = require('./util');
 
-async function findLinkedIn(_page, { name, city, country }, log) {
+async function findLinkedIn({ name, city, country }, log) {
   const result = { companyUrl: null, ownerName: null, ownerUrl: null };
-  const serperKey = process.env.SERPER_API_KEY;
-  if (!serperKey) return result;
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) return result;
 
   log(`💼 Searching LinkedIn for: ${name}`);
   const loc = [city, country].filter(Boolean).join(' ');
-  const bizNorm = normalizeForMatch(name);
+  const sn = cleanSearchName(name);
+  const nameCore = normalizeForMatch(sn);
+  const namePrefix = sn.toLowerCase().slice(0, Math.min(8, sn.length));
 
   // Company page
   try {
-    const results = await serperSearch(
-      `"${name}" ${loc} site:linkedin.com/company`,
-      serperKey, country
-    );
-    for (const r of results) {
-      const m = (r.link || '').match(/linkedin\.com\/company\/([A-Za-z0-9._\-]+)/);
+    const data = await serper('/search', { q: `${sn} ${loc} site:linkedin.com/company`, gl: getCountryCode(country), hl: 'en', num: 5 }, apiKey, 9000);
+    for (const r of (data.organic || [])) {
+      const m = (r.link || '').match(/linkedin\.com\/company\/([A-Za-z0-9._\-]+)/i);
       if (!m) continue;
-      const slug = m[1].toLowerCase();
-      const slugNorm = slug.replace(/[^a-z0-9]/g, '');
-      const titleHas = (r.title || '').toLowerCase().includes(name.toLowerCase().slice(0, Math.min(8, name.length)));
-      // Verify: slug matches business or title mentions business
-      if (titleHas || (bizNorm && slugNorm.includes(bizNorm.slice(0, Math.min(5, bizNorm.length))))) {
+      const slugCore = m[1].toLowerCase().replace(/[^a-z0-9]/g, '');
+      const titleHas = (r.title || '').toLowerCase().includes(namePrefix);
+      if (titleHas || (nameCore && nameCore.length >= 3 && slugCore.includes(nameCore.slice(0, Math.min(5, nameCore.length))))) {
         result.companyUrl = `https://www.linkedin.com/company/${m[1]}`.split('?')[0];
         log(`💼 Company: ${result.companyUrl}`);
         break;
       }
     }
-  } catch (_) {}
+  } catch {}
 
-  // Owner/founder — only if we found a company (otherwise risk of wrong match)
+  // Owner/founder — only if we found a verified company (avoids wrong people).
   if (result.companyUrl) {
     try {
-      const results = await serperSearch(
-        `"${name}" ${loc} owner OR founder OR CEO site:linkedin.com/in`,
-        serperKey, country
-      );
-      for (const r of results) {
-        const m = (r.link || '').match(/linkedin\.com\/in\/([A-Za-z0-9._\-]+)/);
+      const data = await serper('/search', { q: `${sn} ${loc} owner OR founder OR CEO site:linkedin.com/in`, gl: getCountryCode(country), hl: 'en', num: 5 }, apiKey, 9000);
+      for (const r of (data.organic || [])) {
+        const m = (r.link || '').match(/linkedin\.com\/in\/([A-Za-z0-9._\-]+)/i);
         if (!m) continue;
-        const titleLower = (r.title || '').toLowerCase();
-        const snippetLower = (r.snippet || '').toLowerCase();
-        const bizLower = name.toLowerCase();
-        // Must mention business name in title or snippet
-        if (titleLower.includes(bizLower.slice(0, Math.min(8, bizLower.length))) ||
-            snippetLower.includes(bizLower.slice(0, Math.min(8, bizLower.length)))) {
+        const blob = `${r.title || ''} ${r.snippet || ''}`.toLowerCase();
+        if (blob.includes(namePrefix)) {
           result.ownerUrl = `https://www.linkedin.com/in/${m[1]}`.split('?')[0];
-          const titleName = (r.title || '').split(/\s*[-–|]\s*/)[0].trim();
-          result.ownerName = titleName || null;
+          result.ownerName = (r.title || '').split(/\s*[-–|]\s*/)[0].trim() || null;
           log(`💼 Owner: ${result.ownerName || result.ownerUrl}`);
           break;
         }
       }
-    } catch (_) {}
+    } catch {}
   }
 
   return result;
-}
-
-async function serperSearch(query, apiKey, country) {
-  const body = JSON.stringify({
-    q: query,
-    gl: getCountryCode(country),
-    hl: 'en',
-    num: 5,
-  });
-  return new Promise(resolve => {
-    const req = https.request({
-      hostname: 'google.serper.dev',
-      path: '/search',
-      method: 'POST',
-      headers: {
-        'X-API-KEY': apiKey,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-      },
-    }, res => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => {
-        try { resolve(JSON.parse(d).organic || []); }
-        catch (_) { resolve([]); }
-      });
-    });
-    req.on('error', () => resolve([]));
-    req.setTimeout(10000, () => { req.destroy(); resolve([]); });
-    req.write(body);
-    req.end();
-  });
-}
-
-function getCountryCode(country) {
-  const map = { 'saudi arabia': 'sa', 'uae': 'ae', 'united arab emirates': 'ae',
-    'egypt': 'eg', 'kuwait': 'kw', 'bahrain': 'bh', 'qatar': 'qa', 'oman': 'om',
-    'jordan': 'jo', 'lebanon': 'lb', 'uk': 'gb', 'united kingdom': 'gb',
-    'usa': 'us', 'united states': 'us' };
-  return map[(country || '').toLowerCase()] || 'sa';
 }
 
 module.exports = { findLinkedIn };

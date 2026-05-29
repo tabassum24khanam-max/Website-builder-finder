@@ -1,52 +1,76 @@
-// Business discovery using Serper.dev /places endpoint + enrichment
-// If /places returns incomplete data (no phone/website), we run one extra
-// /search query per business to fill in the gaps.
+// Business discovery + enrichment via Serper.dev.
+//
+// IMPORTANT (verified against the live API): the /places endpoint returns ONLY
+// title, lat/lng, rating, ratingCount, category, cid — NO website, NO phone, NO
+// address. So a single /search per business is the REAL source of website /
+// phone / address / Instagram, not an optional backfill.
 
-const https = require('https');
+const {
+  serper, normalizeForMatch, cleanUrl, isSocialOrDirectory,
+  bestPhone, normalizePhone, parseFollowers, verifyHandle, getCountryCode, cleanSearchName,
+} = require('./util');
 
+// ── Chain / franchise / SEO-spam fast filter ─────────────────────────────────
+// A cheap first pass. The AI scorer adds a general "is this independent?" check
+// on top, so this list does not need to cover the whole world.
 const CHAIN_DENYLIST = [
-  'starbucks', 'mcdonald', 'kfc', 'subway', 'burger king', 'pizza hut',
-  'domino', 'costa coffee', 'tim horton', 'dunkin', 'baskin', 'shake shack',
-  'five guys', 'nando', 'hardee', 'al baik', 'albaik', 'herfy', 'kudu',
-  'gym nation', 'body masters', 'fitness time', 'anytime fitness',
-  "gold's gym", 'planet fitness', 'fitness first', 'snap fitness',
-  'curves for women', 'the coffee bean', 'caribou coffee', 'pinkberry',
-  'papa john', 'little caesar', 'popeyes', 'taco bell', 'wendys',
-  'applebee', 'ihop', 'denny', 'dairy queen', 'cold stone creamery',
-  'century 21', 're/max', 'keller williams', 'coldwell banker',
+  'starbucks', 'mcdonald', 'kfc', 'subway', 'burger king', 'pizza hut', 'domino',
+  'costa coffee', 'tim horton', 'dunkin', 'baskin', 'shake shack', 'five guys',
+  'nando', 'hardee', 'al baik', 'albaik', 'herfy', 'kudu', 'dr. cafe', 'dr cafe',
+  'barns', 'the coffee bean', 'caribou coffee', 'pinkberry', 'papa john',
+  'little caesar', 'popeyes', 'taco bell', 'wendys', "wendy's", 'applebee',
+  'ihop', 'denny', 'dairy queen', 'cold stone', 'krispy kreme', 'cinnabon',
+  'gym nation', 'body masters', 'fitness time', 'anytime fitness', "gold's gym",
+  'golds gym', 'planet fitness', 'fitness first', 'snap fitness', 'curves',
+  'century 21', 're/max', 'remax', 'keller williams', 'coldwell banker',
   'mr biryani', 'mr. biryani', 'biryani house', 'paradise biryani',
-  'bombay chowpatty', 'spicy spices',
 ];
 
 function isChain(name) {
   const lower = (name || '').toLowerCase();
-  for (const chain of CHAIN_DENYLIST) {
-    if (lower.includes(chain)) return true;
-  }
-  // "Branch" / "فرع" / branch numbers
-  if (/\bbranch\b|فرع|فروع|\bno\.\s*\d+|\s#\s*\d+/i.test(name)) return true;
-  // Marketing chain listings: name with 2+ "|" separators and "best/top/leading"
+  if (CHAIN_DENYLIST.some(c => lower.includes(c))) return true;
+  // explicit branch markers
+  if (/\bbranch\b|فرع|فروع|\bno\.?\s*\d+\b|\s#\s*\d+/i.test(name)) return true;
+  // marketing/SEO listing junk: pipe-stuffed titles bragging "best/top/leading"
   const pipes = (name.match(/\|/g) || []).length;
-  if (pipes >= 2 && /\b(best|top|leading|premium|finest)\b/i.test(name)) return true;
+  if (pipes >= 2 && /\b(best|top|leading|premium|finest|no\.?\s*1)\b/i.test(name)) return true;
   return false;
 }
 
-async function findBusinessesSerper({ category, location, country, limit = 20, log }) {
+// ── Step 1: discover businesses (clean query + location + ll + correct gl) ────
+
+async function findBusinessesSerper({ category, location, country, lat, lng, limit = 20, log }) {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) throw new Error('SERPER_API_KEY not set');
 
-  const fullLocation = `${location}${country ? ', ' + country : ''}`;
-  log(`🔍 Serper Places: "${category}" in ${fullLocation}...`);
+  const locationLabel = [location, country].filter(Boolean).join(', ');
+  log(`🔍 Serper Places: "${category}" near ${locationLabel}...`);
 
-  const body = JSON.stringify({
-    q: `${category} in ${fullLocation}`,
+  // Clean query — do NOT stuff zip/neighborhood into it (that returns 0 results).
+  const body = {
+    q: `${category} in ${location}`,
+    location: locationLabel || location,
     gl: getCountryCode(country),
     hl: 'en',
-  });
+  };
+  // If we have a precise pin/GPS, bias the search to it.
+  if (lat && lng) body.ll = `@${lat},${lng},14z`;
 
-  const rawResults = await serperRequest('/places', body, apiKey);
-  const places = rawResults.places || [];
+  let raw;
+  try {
+    raw = await serper('/places', body, apiKey);
+  } catch (e) {
+    log(`⚠️  Serper Places error: ${e.message}`, 'warn');
+    // Retry once with the simplest possible query (most robust).
+    raw = await serper('/places', { q: `${category} in ${location}`, gl: getCountryCode(country), hl: 'en' }, apiKey);
+  }
 
+  let places = raw.places || [];
+  if (!places.length) {
+    log('⚠️  No results for that exact spot — retrying with a broader query...', 'warn');
+    const retry = await serper('/places', { q: `${category} ${location}`, gl: getCountryCode(country), hl: 'en' }, apiKey).catch(() => ({}));
+    places = retry.places || [];
+  }
   if (!places.length) {
     log('⚠️  Serper Places returned no results');
     return [];
@@ -56,15 +80,12 @@ async function findBusinessesSerper({ category, location, country, limit = 20, l
 
   const businesses = [];
   for (const p of places) {
-    const name = p.title || '';
+    const name = (p.title || '').trim();
     if (!name) continue;
-    if (isChain(name)) {
-      log(`⏭️  Chain skipped: ${name}`);
-      continue;
-    }
+    if (isChain(name)) { log(`⏭️  Chain/listing skipped: ${name}`); continue; }
     businesses.push({
       name,
-      category,
+      category: p.category || category,
       address: p.address || null,
       phone: normalizePhone(p.phoneNumber || p.phone),
       website: cleanUrl(p.website),
@@ -73,146 +94,89 @@ async function findBusinessesSerper({ category, location, country, limit = 20, l
       lat: p.latitude || null,
       lng: p.longitude || null,
       photoUrl: p.thumbnailUrl || null,
+      instagramHint: null, // filled by enrichBusiness
       mapsUrl: p.cid
         ? `https://www.google.com/maps?cid=${p.cid}`
-        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + (p.address || fullLocation))}`,
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + locationLabel)}`,
     });
     if (businesses.length >= limit) break;
   }
 
-  log(`✅ ${businesses.length} local independent businesses found`);
+  log(`✅ ${businesses.length} candidate local businesses`);
   return businesses;
 }
 
-// Single follow-up Serper search to fill in missing phone / website / Instagram
-async function enrichMissingFields(business, location, country, log) {
+// ── Step 2: enrich one business with a single /search ────────────────────────
+// Fills website, phone, address, and an Instagram hint (handle/followers/bio)
+// from the same query — Serper's organic results carry all of it.
+
+async function enrichBusiness(business, location, country, log) {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) return business;
 
-  const missing = [];
-  if (!business.phone) missing.push('phone');
-  if (!business.website) missing.push('website');
-  if (missing.length === 0) return business;
+  log(`🔎 Enriching ${business.name}...`);
 
-  log(`🔎 Enriching ${business.name} (missing: ${missing.join(', ')})...`);
-
-  const body = JSON.stringify({
-    q: `"${business.name}" ${location}${country ? ' ' + country : ''}`,
-    gl: getCountryCode(country),
-    hl: 'en',
-    num: 8,
-  });
-
+  const loc = [location, country].filter(Boolean).join(' ');
   let data;
-  try { data = await serperRequest('/search', body, apiKey); }
-  catch (_) { return business; }
+  try {
+    data = await serper('/search', { q: `${cleanSearchName(business.name)} ${loc}`, gl: getCountryCode(country), hl: 'en', num: 9 }, apiKey, 10000);
+  } catch (e) {
+    log(`⚠️  Enrichment search failed for ${business.name}: ${e.message}`, 'warn');
+    return business;
+  }
 
-  // Knowledge graph often has phone + website directly
+  // Knowledge graph (when present) is the most authoritative source.
   const kg = data.knowledgeGraph || {};
   if (!business.phone && kg.phoneNumber) business.phone = normalizePhone(kg.phoneNumber);
-  if (!business.website && kg.website) business.website = cleanUrl(kg.website);
+  if (!business.website && kg.website && !isSocialOrDirectory(kg.website)) business.website = cleanUrl(kg.website);
   if (!business.address && kg.address) business.address = kg.address;
 
-  // Scan organic results for phone (snippet) + plausible website
-  const bizNorm = normalizeForMatch(business.name);
-  for (const r of (data.organic || [])) {
+  const nameCore = normalizeForMatch(business.name);
+  const organic = data.organic || [];
+
+  for (const r of organic) {
     const link = r.link || '';
     const snippet = `${r.title || ''} ${r.snippet || ''}`;
 
-    // Phone from snippet
+    // Phone — accept the first strong (real-looking) number from any snippet.
     if (!business.phone) {
-      const phoneM = snippet.match(/(\+?\d{1,4}[\s\-().]{0,2}\d{1,4}[\s\-().]{0,2}\d{3,4}[\s\-().]{0,2}\d{3,4})/);
-      if (phoneM) {
-        const digits = phoneM[1].replace(/\D/g, '');
-        if (digits.length >= 8 && digits.length <= 15) business.phone = normalizePhone(phoneM[1]);
+      const ph = bestPhone(snippet);
+      if (ph) business.phone = normalizePhone(ph);
+    }
+
+    // Instagram — first verified business handle (never an influencer/aggregator).
+    if (!business.instagramHint) {
+      const im = link.match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/i);
+      if (im && verifyHandle(im[1], business.name)) {
+        business.instagramHint = {
+          handle: im[1],
+          url: `https://www.instagram.com/${im[1]}/`,
+          followers: parseFollowers(snippet),
+          bio: snippet.slice(0, 300),
+        };
       }
     }
 
-    // Website: skip socials + directories, verify domain matches business name
+    // Website — only accept a domain whose NAME matches the business. Directory
+    // pages (coffee guides, listing sites, even banks' "deals" pages) all mention
+    // the business name in their snippet but are NOT its website, so matching on
+    // the snippet is deliberately avoided — the domain must carry the name.
     if (!business.website && link && !isSocialOrDirectory(link)) {
       try {
         const host = new URL(link).hostname.replace(/^www\./, '');
-        const hostNorm = host.replace(/\.[a-z.]+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-        const snipMatch = snippet.toLowerCase().includes(business.name.toLowerCase().slice(0, Math.min(10, business.name.length)));
-        if ((bizNorm && hostNorm.includes(bizNorm.slice(0, Math.min(5, bizNorm.length)))) || snipMatch) {
+        const hostCore = host.replace(/\.[a-z.]+$/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+        if (nameCore && nameCore.length >= 4 && hostCore.includes(nameCore.slice(0, Math.min(6, nameCore.length)))) {
           business.website = cleanUrl(link);
-          log(`🌐 Found website via search: ${business.website}`);
         }
-      } catch (_) {}
+      } catch {}
     }
-
-    if (business.phone && business.website) break;
   }
+
+  if (business.website) log(`🌐 Website: ${business.website}`);
+  if (business.phone) log(`📞 Phone: ${business.phone}`);
+  if (business.instagramHint) log(`📸 Instagram: @${business.instagramHint.handle}${business.instagramHint.followers ? ` (${business.instagramHint.followers.toLocaleString()} followers)` : ''}`);
 
   return business;
 }
 
-function normalizePhone(p) {
-  if (!p) return null;
-  const s = String(p).trim();
-  if (!s) return null;
-  // Keep + and digits and common separators, strip everything else
-  const cleaned = s.replace(/[^\d+\s().\-]/g, '').trim();
-  return cleaned.length >= 7 ? cleaned : null;
-}
-
-function cleanUrl(u) {
-  if (!u) return null;
-  let url = String(u).trim();
-  if (!url) return null;
-  if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  try { new URL(url); return url; } catch (_) { return null; }
-}
-
-function isSocialOrDirectory(url) {
-  return /instagram\.com|facebook\.com|tiktok\.com|linkedin\.com|youtube\.com|twitter\.com|x\.com|snapchat\.com|pinterest\.com|tripadvisor\.|yelp\.|foursquare\.|zomato\.|trustpilot\.|google\.[a-z.]+\/maps|maps\.google|wikipedia\.org|wikiwand\.|wikidata\.|yelp\.com|opentable\.|grubhub\.|doordash\.|ubereats\.|talabat\.|hungerstation\.|noon\.com|amazon\.|booking\.com|agoda\.|expedia\.|justdial\.|sulekha\.|menupages\./i.test(url);
-}
-
-function normalizeForMatch(name) {
-  return (name || '').toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .replace(/\b(cafe|restaurant|bistro|kitchen|coffee|coffeehouse|shop|salon|gym|fitness|spa|boutique|store|the|and|of|sa|ksa|uae|al|el|de|la|le|los|las)\b/gi, '')
-    .replace(/\s+/g, '')
-    .trim();
-}
-
-function serperRequest(path, body, apiKey) {
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'google.serper.dev',
-      path,
-      method: 'POST',
-      headers: {
-        'X-API-KEY': apiKey,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-      },
-    }, res => {
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(d);
-          if (parsed.message && !parsed.places && !parsed.organic) reject(new Error(parsed.message));
-          else resolve(parsed);
-        } catch (e) { reject(new Error(`Parse error: ${d.slice(0, 200)}`)); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(12000, () => { req.destroy(); reject(new Error('timeout')); });
-    req.write(body);
-    req.end();
-  });
-}
-
-function getCountryCode(country) {
-  const map = {
-    'saudi arabia': 'sa', 'uae': 'ae', 'united arab emirates': 'ae',
-    'egypt': 'eg', 'kuwait': 'kw', 'bahrain': 'bh', 'qatar': 'qa', 'oman': 'om',
-    'jordan': 'jo', 'lebanon': 'lb', 'uk': 'gb', 'united kingdom': 'gb',
-    'usa': 'us', 'united states': 'us',
-  };
-  return map[(country || '').toLowerCase()] || 'sa';
-}
-
-module.exports = { findBusinessesSerper, enrichMissingFields, normalizeForMatch, isSocialOrDirectory };
+module.exports = { findBusinessesSerper, enrichBusiness, isChain };

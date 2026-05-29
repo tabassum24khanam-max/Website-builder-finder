@@ -66,7 +66,10 @@ async function findBusinessesOSM({ category, location, country, lat, lng, radius
   if (!lat || !lng) {
     const q = `${location}${country ? ', ' + country : ''}`;
     log(`📍 Geocoding "${q}"...`);
-    const geo = await geocode(q);
+    // Try the full string, then the city alone, then the country — most robust.
+    let geo = await geocode(q);
+    if (!geo && country) geo = await geocode(location);
+    if (!geo && country) geo = await geocode(country);
     if (!geo) throw new Error(`Could not geocode "${q}". Try a more specific location.`);
     lat = geo.lat;
     lng = geo.lng;

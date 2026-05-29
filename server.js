@@ -67,20 +67,19 @@ app.post('/api/searches', (req, res) => {
   const effectiveRadius = parseInt(radius_km || radius) || 5;
   const effectiveCount = parseInt(limit_count || count) || 20;
 
-  if (!category || !location) {
-    return res.status(400).json({ error: 'category and location are required' });
+  // Keep the location CLEAN — stuffing street+zip into the search query was a
+  // root cause of "0 results". Precise targeting comes from lat/lng below.
+  const cleanLocation = (location || zip || '').trim();
+  if (!category || !cleanLocation) {
+    return res.status(400).json({ error: 'category and a location (city or zip) are required' });
   }
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'sk-paste-your-key-here') {
     return res.status(400).json({ error: 'OpenAI API key not configured. Check your .env file.' });
   }
 
-  // Build a richer location string from zip/street if provided
-  const locationParts = [street, location, zip].filter(Boolean);
-  const fullLocation = locationParts.join(', ');
-
   const searchId = uuid();
   q.insertSearch.run({
-    id: searchId, category, location: fullLocation || location, country,
+    id: searchId, category, location: cleanLocation, country,
     radius_km: effectiveRadius, limit_count: effectiveCount,
   });
   const search = q.getSearch.get(searchId);

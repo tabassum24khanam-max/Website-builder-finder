@@ -60,6 +60,8 @@ db.exec(`
     maps_url                 TEXT,
     lat                      REAL,
     lng                      REAL,
+    photo_url                TEXT,
+    owner_phone              TEXT,
     status                   TEXT DEFAULT 'new',
     notes                    TEXT,
     scraped_at               DATETIME DEFAULT CURRENT_TIMESTAMP,
