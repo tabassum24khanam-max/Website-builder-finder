@@ -24,6 +24,17 @@ function withTimeout(promise, ms, fallback = null) {
 
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
+// Great-circle distance in km between two lat/lng points. Used to hard-filter
+// discovery results to the searched locality (Serper returns nationwide matches
+// for a bare zip — this is what keeps Dammam out of a Riyadh search).
+function haversineKm(lat1, lng1, lat2, lng2) {
+  if ([lat1, lng1, lat2, lng2].some(v => typeof v !== 'number' || isNaN(v))) return Infinity;
+  const R = 6371, toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // ── HTTP GET (redirect-capped, byte-capped, timed) ───────────────────────────
 
 function httpGet(url, { timeoutMs = 8000, maxRedirects = 4, maxBytes = 250000, headers = {} } = {}) {
@@ -146,6 +157,37 @@ function isStrongPhone(raw) {
 
 function bestPhone(text) { return extractPhones(text).find(isStrongPhone) || null; }
 
+// Pick the most trustworthy phone from weighted candidates {raw, weight}.
+// A real business line recurs across sources (its own site, IG bio, several
+// directories); a wrong toll-free or a number mistakenly scraped from a busy
+// snippet usually appears once. Score = summed source weight, with a penalty
+// for toll-free/hotline numbers and a small bonus for mobiles, so a direct
+// mobile beats a generic 800/920 call-centre line (the exact ON Cafe bug).
+function pickPhone(candidates) {
+  const groups = new Map(); // last-9-digits → { raw, score, digits }
+  for (const c of candidates) {
+    const raw = c && c.raw;
+    if (!isStrongPhone(raw)) continue;
+    const norm = normalizePhone(raw);
+    if (!norm) continue;
+    const digits = norm.replace(/\D/g, '');
+    const key = digits.slice(-9); // identifies the line across +country/0/spacing
+    const g = groups.get(key) || { raw: norm, score: 0, digits };
+    g.score += (c.weight || 1);
+    if (digits.length > g.digits.length) { g.raw = norm; g.digits = digits; } // keep fullest form
+    groups.set(key, g);
+  }
+  let best = null;
+  for (const g of groups.values()) {
+    let s = g.score;
+    const nat = g.digits.slice(-10); // national-ish tail
+    if (/^(800|920|8200|9200|1800)/.test(nat) || /^0?(800|920)/.test(g.digits)) s -= 2; // toll-free/hotline
+    if (/5\d{8}$/.test(g.digits)) s += 1; // GCC/Saudi mobile shape (harmless elsewhere)
+    if (!best || s > best.s) best = { s, raw: g.raw };
+  }
+  return best ? best.raw : null;
+}
+
 // For search queries, prefer the latin core of a (possibly bilingual) name:
 // "مقهى ومحمصة وودز (العليا) WOODS Cafe and Roastery (Olaya)" → "WOODS Cafe and Roastery".
 // Falls back to the original for non-latin-only names (Arabic/CJK/etc.).
@@ -261,9 +303,9 @@ function getCountryCode(country) {
 }
 
 module.exports = {
-  UA, withTimeout, delay, httpGet, serper,
+  UA, withTimeout, delay, haversineKm, httpGet, serper,
   normalizeForMatch, cleanUrl, isSocialOrDirectory,
-  extractPhones, bestPhone, normalizePhone, extractEmail, cleanSearchName,
+  extractPhones, bestPhone, pickPhone, normalizePhone, extractEmail, cleanSearchName,
   parseCount, parseFollowers, parsePosts,
   isInfluencerHandle, verifyHandle, getCountryCode,
 };

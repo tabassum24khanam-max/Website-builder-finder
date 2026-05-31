@@ -4,11 +4,17 @@
 // title, lat/lng, rating, ratingCount, category, cid — NO website, NO phone, NO
 // address. So a single /search per business is the REAL source of website /
 // phone / address / Instagram, not an optional backfill.
+//
+// Locality is enforced two ways, because Serper interprets a bare zip/area
+// loosely and will happily return cafes from another city 400km away:
+//   1. an `ll` pin from a robust geocode biases results to the area, and
+//   2. a HARD haversine distance filter drops anything outside the radius.
 
 const {
-  serper, withTimeout, normalizeForMatch, cleanUrl, isSocialOrDirectory,
-  bestPhone, normalizePhone, parseFollowers, verifyHandle, getCountryCode, cleanSearchName,
+  serper, withTimeout, haversineKm, normalizeForMatch, cleanUrl, isSocialOrDirectory,
+  bestPhone, pickPhone, normalizePhone, parseFollowers, verifyHandle, getCountryCode, cleanSearchName,
 } = require('./util');
+const { geocodeBest } = require('./osm');
 
 // ── Chain / franchise / SEO-spam fast filter ─────────────────────────────────
 const CHAIN_DENYLIST = [
@@ -33,18 +39,12 @@ function isChain(name) {
   return false;
 }
 
-// ── AI query variant generation ────────────────────────────────────────────────
-// Uses gpt-4o-mini to generate 3 neighborhood-aware search queries.
-// The key insight: Serper `location` param ignores sub-city areas (neighborhoods,
-// districts, zip codes). Putting the neighborhood in `q` is the ONLY way to get
-// local results. A human searching "cafes in Ibn Khaldun, Riyadh" on Google Maps
-// gets correct results; "cafes" + location="Ibn Khaldun, Riyadh" does not.
+// ── AI query variant generation ──────────────────────────────────────────────
+// Puts the neighborhood directly into `q` (the Serper `location` param ignores
+// sub-city areas) and varies the wording for coverage. Never a bare zip alone.
 
-async function generateQueryVariants(category, searchContext, country, log) {
-  const base = [
-    `${category} in ${searchContext}`,
-    `${category} near ${searchContext}`,
-  ];
+async function generateQueryVariants(category, areaText, country, log) {
+  const base = [`${category} in ${areaText}`, `${category} near ${areaText}`];
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || apiKey === 'sk-paste-your-key-here') return base;
@@ -52,103 +52,104 @@ async function generateQueryVariants(category, searchContext, country, log) {
   try {
     const OpenAI = require('openai');
     const openai = new OpenAI({ apiKey, timeout: 15000, maxRetries: 1 });
-
-    const prompt = `Generate 3 short Google Maps search queries to find "${category}" businesses in "${searchContext}"${country ? `, ${country}` : ''}.
+    const prompt = `Generate 3 short Google Maps search queries to find "${category}" businesses in "${areaText}"${country ? `, ${country}` : ''}.
 
 Rules:
-- Always include the neighborhood/district name inside the query (vital for local results)
+- ALWAYS include the area/neighborhood name "${areaText}" inside every query (vital for local results)
+- Never use a bare postal/zip code on its own — always pair it with the area or city name
 - Vary the category wording with natural synonyms
-- If the location is in an Arabic-speaking country, add one query in Arabic
+- If the area is in an Arabic-speaking country, make one query in Arabic
 - Each query must be 3-7 words
-- Return ONLY a valid JSON array of strings, nothing else
+- Return ONLY a JSON array of strings, nothing else
 
-Example output for cafes in Ibn Khaldun, Riyadh, Saudi Arabia:
-["cafes in Ibn Khaldun Riyadh", "coffee shops Ibn Khaldun district", "مقاهي حي ابن خلدون الرياض"]`;
+Example for cafes in Ibn Khaldun, Riyadh, Saudi Arabia:
+["cafes in Ibn Khaldun Riyadh", "coffee shops Ibn Khaldun district Riyadh", "مقاهي حي ابن خلدون الرياض"]`;
 
     const resp = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 200,
     });
-
     const text = (resp.choices[0]?.message?.content || '').trim();
     const match = text.match(/\[[\s\S]*?\]/);
     if (match) {
       const variants = JSON.parse(match[0]);
-      if (Array.isArray(variants) && variants.length >= 1) {
+      if (Array.isArray(variants) && variants.length) {
         log(`🧠 AI search variants: ${variants.slice(0, 3).join(' | ')}`);
-        // AI variants first (they include neighborhood), then base fallbacks
-        return [...variants.slice(0, 3), ...base].filter((v, i, a) => a.indexOf(v) === i);
+        return [...variants.slice(0, 3), ...base].filter((v, i, a) => v && a.indexOf(v) === i);
       }
     }
   } catch (e) {
     log(`⚠️  AI query generation failed (${e.message}) — using defaults`, 'warn');
   }
-
   return base;
 }
 
-// ── Step 1: discover businesses ────────────────────────────────────────────────
-// neighborhood (from the "Street / Neighborhood" form field) is separate from
-// location (city) because Serper's `location` param ignores sub-city areas.
-// We put the neighborhood into `q` via AI-generated variants instead.
+// ── Step 1: discover businesses ──────────────────────────────────────────────
 
-async function findBusinessesSerper({ category, location, neighborhood, country, lat, lng, limit = 20, log }) {
+async function findBusinessesSerper({ category, city, neighborhood, zip, country, lat, lng, radiusKm = 10, limit = 20, log }) {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) throw new Error('SERPER_API_KEY not set');
-
   const gl = getCountryCode(country);
-  // Full context for AI and geocoding: "Ibn Khaldun, Riyadh" or just "Riyadh"
-  const searchContext = neighborhood ? `${neighborhood}, ${location}` : location;
-  const locationLabel = [location, country].filter(Boolean).join(', ');
 
-  log(`🔍 Generating search queries for "${category}" near ${searchContext}...`);
-
-  // AI generates neighborhood-aware query variants in parallel with geocoding
-  const [queries, geoResult] = await Promise.all([
-    withTimeout(
-      generateQueryVariants(category, searchContext, country, log),
-      14000, [`${category} in ${searchContext}`, `${category} near ${searchContext}`]
-    ),
-    // Geocode the full context (neighborhood+city) for a precise `ll` pin
-    (lat || lng) ? Promise.resolve(null) : withTimeout(
-      (async () => {
-        const { geocode } = require('./osm');
-        const geoQuery = `${searchContext}${country ? ', ' + country : ''}`;
-        return await geocode(geoQuery);
-      })(),
-      5000, null
-    ),
-  ]);
-
-  let pinLat = lat, pinLng = lng;
-  if (!pinLat && !pinLng && geoResult) {
-    pinLat = geoResult.lat;
-    pinLng = geoResult.lng;
-    log(`📍 Geocoded: ${geoResult.lat},${geoResult.lng} (${(geoResult.display || '').slice(0, 50)})`);
+  // ── Resolve a precise search center (the linchpin of locality) ──────────────
+  let center = null, precision = 'city';
+  if (lat && lng) {
+    center = { lat, lng }; precision = 'precise';
+    log(`📍 Using map pin: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
+  } else {
+    const geo = await withTimeout(geocodeBest({ neighborhood, city, zip, country }), 8000, null);
+    if (geo) {
+      center = { lat: geo.lat, lng: geo.lng }; precision = geo.precision;
+      log(`📍 Search center: ${geo.lat.toFixed(4)},${geo.lng.toFixed(4)} — ${(geo.display || '').slice(0, 55)} [${precision}]`);
+      // If the city wasn't given, recover an English area name for clean queries.
+      if (!city && geo.address) {
+        city = geo.address.city || geo.address.town || geo.address.state || city;
+      }
+    } else {
+      log('⚠️  Could not geocode the location — relying on text query only.', 'warn');
+    }
   }
 
-  const seen = new Map(); // deduplicate by lowercased name
-  const businesses = [];
+  // Human-readable area for the query text. Prefer what the user typed; never a
+  // bare zip (that matches nationwide) — pair it with the resolved city.
+  const areaText =
+    [neighborhood, city].filter(Boolean).join(', ') ||
+    [city, country].filter(Boolean).join(', ') ||
+    [zip, country].filter(Boolean).join(' ') ||
+    country || 'this area';
+  const locationLabel = [city, country].filter(Boolean).join(', ') || country || areaText;
+
+  // Distance budget: respect the user's radius for a precise center; widen for a
+  // city-level center so we don't trim far-side neighborhoods; don't filter at
+  // all for a country-level guess (it would be meaningless).
+  let filterKm = (radiusKm || 10) * 1.3;
+  if (precision === 'city') filterKm = Math.max(filterKm, 30);
+  if (precision === 'country' || !center) filterKm = Infinity;
+
+  log(`🔍 Discovering "${category}" near ${areaText}${center && filterKm !== Infinity ? ` (≤${Math.round(filterKm)}km)` : ''}...`);
+
+  const queries = await withTimeout(generateQueryVariants(category, areaText, country, log), 16000, [`${category} in ${areaText}`]);
+
+  // ── Fetch: each query × up to 4 pages, dedup, collect with distance ─────────
+  const seen = new Map();
+  const candidates = [];
+  const hardCap = Math.min(limit * 3, 60); // over-fetch; enrichment will drop some
 
   for (const q of queries) {
-    if (businesses.length >= limit) break;
-
+    if (candidates.length >= hardCap) break;
     const baseBody = { q, location: locationLabel, gl, hl: 'en' };
-    if (pinLat && pinLng) baseBody.ll = `@${pinLat},${pinLng},14z`;
+    if (center) baseBody.ll = `@${center.lat},${center.lng},14z`;
 
     for (let page = 1; page <= 4; page++) {
-      if (businesses.length >= limit) break;
-
-      const body = page === 1 ? baseBody : { ...baseBody, page };
+      if (candidates.length >= hardCap) break;
       let raw;
       try {
-        raw = await serper('/places', body, apiKey);
+        raw = await serper('/places', page === 1 ? baseBody : { ...baseBody, page }, apiKey);
       } catch (e) {
-        log(`⚠️  Serper error (q="${q}" page ${page}): ${e.message}`, 'warn');
+        log(`⚠️  Serper error (q="${q}" p${page}): ${e.message}`, 'warn');
         break;
       }
-
       const places = raw.places || [];
       if (!places.length) break;
 
@@ -158,40 +159,55 @@ async function findBusinessesSerper({ category, location, neighborhood, country,
         const key = name.toLowerCase();
         if (seen.has(key)) continue;
         seen.set(key, true);
+
+        // HARD locality filter — this is what keeps other cities out.
+        let dist = null;
+        if (center && p.latitude && p.longitude) {
+          dist = haversineKm(center.lat, center.lng, p.latitude, p.longitude);
+          if (dist > filterKm) continue;
+        }
         if (isChain(name)) { log(`⏭️  Chain/listing skipped: ${name}`); continue; }
-        businesses.push({
-          name,
-          category: p.category || category,
-          address: p.address || null,
-          phone: normalizePhone(p.phoneNumber || p.phone),
-          website: cleanUrl(p.website),
-          rating: p.rating || null,
-          reviewCount: p.ratingCount || 0,
-          lat: p.latitude || null,
-          lng: p.longitude || null,
-          photoUrl: p.thumbnailUrl || null,
-          instagramHint: null,
-          mapsUrl: p.cid
-            ? `https://www.google.com/maps?cid=${p.cid}`
-            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + locationLabel)}`,
+
+        candidates.push({
+          dist: dist == null ? 9999 : dist,
+          biz: {
+            name,
+            category: p.category || category,
+            searchedCategory: category,
+            address: p.address || null,
+            phone: normalizePhone(p.phoneNumber || p.phone),
+            website: cleanUrl(p.website),
+            rating: p.rating || null,
+            reviewCount: p.ratingCount || 0,
+            lat: p.latitude || null,
+            lng: p.longitude || null,
+            photoUrl: p.thumbnailUrl || null,
+            instagramHint: null,
+            mapsUrl: p.cid
+              ? `https://www.google.com/maps?cid=${p.cid}`
+              : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + locationLabel)}`,
+          },
         });
       }
-
-      if (places.length < 10) break; // fewer than 10 means no more pages
+      if (places.length < 10) break; // last page
     }
   }
 
-  if (!businesses.length) {
-    log('⚠️  Serper Places returned no results');
+  if (!candidates.length) {
+    log('⚠️  No local results after distance filtering.');
     return [];
   }
 
-  log(`✅ ${businesses.length} candidate local businesses`);
-  return businesses.slice(0, limit);
+  // Closest first = most relevant to the searched locality.
+  candidates.sort((a, b) => a.dist - b.dist);
+  const businesses = candidates.slice(0, hardCap).map(c => c.biz);
+  log(`✅ ${businesses.length} local candidates within range (closest first)`);
+  return businesses;
 }
 
 // ── Step 2: enrich one business with a single /search ────────────────────────
-// Fills website, phone, address, and an Instagram hint from the same query.
+
+const IG_RESERVED = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'about', 'help', 'legal', 'press', 'api', 'blog', 'developers', 'privacy', 'safety', 'support', 'directory', 'challenge', 'popular', 'web', 'emails', 'session']);
 
 async function enrichBusiness(business, location, country, log) {
   const apiKey = process.env.SERPER_API_KEY;
@@ -199,10 +215,15 @@ async function enrichBusiness(business, location, country, log) {
 
   log(`🔎 Enriching ${business.name}...`);
 
+  // Disambiguate generic names ("ON", "Drip") with the category + location so we
+  // search the right business, not a random match.
+  const catWord = (business.category || '').split(/[,/|]/)[0].trim();
   const loc = [location, country].filter(Boolean).join(' ');
+  const query = [cleanSearchName(business.name), catWord, loc].filter(Boolean).join(' ');
+
   let data;
   try {
-    data = await serper('/search', { q: `${cleanSearchName(business.name)} ${loc}`, gl: getCountryCode(country), hl: 'en', num: 9 }, apiKey, 10000);
+    data = await serper('/search', { q: query, gl: getCountryCode(country), hl: 'en', num: 9 }, apiKey, 10000);
   } catch (e) {
     log(`⚠️  Enrichment search failed for ${business.name}: ${e.message}`, 'warn');
     return business;
@@ -210,58 +231,46 @@ async function enrichBusiness(business, location, country, log) {
 
   // Knowledge graph (when present) is the most authoritative source.
   const kg = data.knowledgeGraph || {};
-  if (!business.phone && kg.phoneNumber) business.phone = normalizePhone(kg.phoneNumber);
   if (!business.website && kg.website && !isSocialOrDirectory(kg.website)) business.website = cleanUrl(kg.website);
   if (!business.address && kg.address) business.address = kg.address;
 
   const nameCore = normalizeForMatch(business.name);
   const organic = data.organic || [];
 
-  // Reserved Instagram paths that are never a handle.
-  const IG_RESERVED = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'about', 'help', 'legal', 'press']);
+  // Gather phone candidates from all sources, then pick by consensus (a real
+  // number recurs; the wrong toll-free appears once) — fixes the ON Cafe bug.
+  const phoneCandidates = [];
+  if (business.phone) phoneCandidates.push({ raw: business.phone, weight: 3 });
+  if (kg.phoneNumber) phoneCandidates.push({ raw: kg.phoneNumber, weight: 4 });
 
   for (const r of organic) {
     const link = r.link || '';
     const snippet = `${r.title || ''} ${r.snippet || ''}`;
 
-    if (!business.phone) {
-      const ph = bestPhone(snippet);
-      if (ph) business.phone = normalizePhone(ph);
+    const ph = bestPhone(snippet);
+    if (ph) {
+      // weight the business's own site / a real directory higher than noise
+      let host = ''; try { host = new URL(link).hostname.replace(/^www\./, ''); } catch {}
+      const ownSite = nameCore && host.replace(/[^a-z0-9]/gi, '').toLowerCase().includes(nameCore.slice(0, Math.min(6, nameCore.length)));
+      phoneCandidates.push({ raw: ph, weight: ownSite ? 3 : 1 });
     }
 
-    // Instagram handle — check URL first, then title/snippet.
-    // Titles like "HAI Coffee (@hai.coffee.riyadh) • Instagram photos and videos"
-    // are the PRIMARY way Google indexes IG reels/posts, not profile URLs.
+    // Instagram — check URL path first, then the title/snippet "(@handle)" form
+    // (Google often indexes a reel, where the handle is only in the title).
     if (!business.instagramHint) {
-      let igHandle = null, igUrl = null;
-
-      // From URL path
+      let h = null, u = null;
       const um = link.match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/i);
-      if (um && !IG_RESERVED.has(um[1].toLowerCase())) {
-        igHandle = um[1];
-        igUrl = `https://www.instagram.com/${um[1]}/`;
-      }
-
-      // From title/snippet: "Name (@handle) •" or "Name (@handle) on Instagram"
-      if (!igHandle) {
-        const tm = snippet.match(/\(@([A-Za-z0-9._]{2,30})\)/);
-        if (tm) {
-          igHandle = tm[1];
-          igUrl = `https://www.instagram.com/${tm[1]}/`;
-        }
-      }
-
-      if (igHandle && verifyHandle(igHandle, business.name)) {
-        business.instagramHint = {
-          handle: igHandle,
-          url: igUrl,
-          followers: parseFollowers(snippet),
-          bio: snippet.slice(0, 300),
-        };
+      if (um && !IG_RESERVED.has(um[1].toLowerCase())) { h = um[1]; u = `https://www.instagram.com/${um[1]}/`; }
+      if (!h) { const tm = snippet.match(/\(@([A-Za-z0-9._]{2,30})\)/); if (tm) { h = tm[1]; u = `https://www.instagram.com/${tm[1]}/`; } }
+      if (h && verifyHandle(h, business.name)) {
+        business.instagramHint = { handle: h, url: u, followers: parseFollowers(snippet), bio: snippet.slice(0, 300) };
+        const bioPhone = bestPhone(snippet);
+        if (bioPhone) phoneCandidates.push({ raw: bioPhone, weight: 2 }); // IG bio number is reliable
       }
     }
 
-    // Website — only accept a domain whose name matches the business.
+    // Website — only accept a domain whose NAME matches the business (directory
+    // pages mention the name in their snippet but are not the business's site).
     if (!business.website && link && !isSocialOrDirectory(link)) {
       try {
         const host = new URL(link).hostname.replace(/^www\./, '');
@@ -272,6 +281,9 @@ async function enrichBusiness(business, location, country, log) {
       } catch {}
     }
   }
+
+  const consensus = pickPhone(phoneCandidates);
+  if (consensus) business.phone = consensus;
 
   if (business.website) log(`🌐 Website: ${business.website}`);
   if (business.phone) log(`📞 Phone: ${business.phone}`);

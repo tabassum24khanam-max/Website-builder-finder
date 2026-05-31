@@ -962,11 +962,14 @@
           </div>
         </div>
 
-        <!-- Map preview -->
+        <!-- Map preview (Google Maps) -->
         <div class="form-group" style="margin-bottom:16px;">
-          <label class="form-label">Search Area <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(click on map to refine center, drag marker to adjust)</span></label>
-          <div id="picker-map" style="height:280px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);"></div>
-          <div id="picker-status" style="font-size:11.5px;color:var(--text-dim);margin-top:6px;">Type a city, use GPS, or click the map to set your search center.</div>
+          <label class="form-label">Search Area <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(updates as you type the city, area & zip — or tap 📍 for your location)</span></label>
+          <div id="picker-map" style="height:280px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);overflow:hidden;position:relative;">
+            <iframe id="picker-frame" title="Search area preview" style="width:100%;height:100%;border:0;display:none;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <div id="picker-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text-dim);font-size:13px;padding:20px;">🗺️ Type a city / area or tap 📍 to preview your search area on Google Maps</div>
+          </div>
+          <div id="picker-status" style="font-size:11.5px;color:var(--text-dim);margin-top:6px;">Tip: add a Street / Neighborhood to narrow the search to that exact area.</div>
         </div>
 
         <div class="form-row-3" style="margin-bottom:16px;">
@@ -2344,67 +2347,71 @@ async function useCurrentLocation() {
 }
 
 // ============================================================
-//  PICKER MAP — visual location selection
+//  PICKER MAP — Google Maps embed (keyless), driven by the inputs
 // ============================================================
-const pickerState = { lat: null, lng: null, map: null, marker: null };
+// pickerState.lat/lng are only set from a precise source (a picked suggestion
+// or GPS). When the user types freely they stay null and the backend geocodes
+// the text — which now resolves zip/neighborhood precisely on its own.
+const pickerState = { lat: null, lng: null };
 
-function initPickerMap() {
-  if (pickerState.map) return;
-  const el = document.getElementById('picker-map');
-  if (!el || typeof L === 'undefined') return;
-  pickerState.map = L.map('picker-map').setView([24.7136, 46.6753], 4);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-    maxZoom: 19,
-  }).addTo(pickerState.map);
-  pickerState.map.on('click', async (e) => {
-    setPickerLocation(e.latlng.lat, e.latlng.lng, null);
-    // Reverse geocode to fill the city/zip fields
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${e.latlng.lat}&lon=${e.latlng.lng}&format=json`, { headers: { 'Accept-Language': 'en' } });
-      const data = await res.json();
-      const addr = data.address || {};
-      const city = addr.city || addr.town || addr.village || addr.county || '';
-      if (city && !document.getElementById('location-input').value.trim()) {
-        document.getElementById('location-input').value = city;
-      }
-      if (addr.country && !document.getElementById('country-input').value.trim()) {
-        document.getElementById('country-input').value = addr.country;
-      }
-      if (addr.postcode && !document.getElementById('zip-input').value.trim()) {
-        document.getElementById('zip-input').value = addr.postcode;
-      }
-      updatePickerStatus(`Pin: ${city || data.display_name?.split(',').slice(0,2).join(', ') || 'unknown'}`);
-    } catch {}
-  });
-  setTimeout(() => pickerState.map.invalidateSize(), 100);
+function pickerQueryText() {
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  return [v('street-input'), v('location-input'), v('zip-input'), v('country-input')]
+    .filter(Boolean).join(', ');
 }
 
+function googleEmbedSrc() {
+  if (pickerState.lat && pickerState.lng) {
+    return `https://www.google.com/maps?q=${pickerState.lat},${pickerState.lng}&z=14&hl=en&output=embed`;
+  }
+  const q = pickerQueryText();
+  if (!q) return '';
+  return `https://www.google.com/maps?q=${encodeURIComponent(q)}&z=13&hl=en&output=embed`;
+}
+
+function refreshPickerMap() {
+  const frame = document.getElementById('picker-frame');
+  const placeholder = document.getElementById('picker-placeholder');
+  if (!frame) return;
+  const src = googleEmbedSrc();
+  if (!src) {
+    frame.style.display = 'none';
+    if (placeholder) placeholder.style.display = 'flex';
+    return;
+  }
+  if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
+  frame.style.display = 'block';
+  if (placeholder) placeholder.style.display = 'none';
+}
+
+// Called when a precise coordinate is chosen (suggestion click or GPS).
 function setPickerLocation(lat, lng, label) {
-  if (!pickerState.map) initPickerMap();
-  if (!pickerState.map) return;
   pickerState.lat = lat;
   pickerState.lng = lng;
-  if (pickerState.marker) {
-    pickerState.marker.setLatLng([lat, lng]);
-  } else {
-    pickerState.marker = L.marker([lat, lng], { draggable: true }).addTo(pickerState.map);
-    pickerState.marker.on('dragend', (e) => {
-      const p = e.target.getLatLng();
-      pickerState.lat = p.lat;
-      pickerState.lng = p.lng;
-      updatePickerStatus(`📍 ${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`);
-    });
-  }
-  pickerState.map.setView([lat, lng], 13);
-  setTimeout(() => pickerState.map.invalidateSize(), 50);
-  updatePickerStatus(label ? `📍 ${label}` : `📍 ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+  refreshPickerMap();
+  updatePickerStatus(label ? `📍 ${label}` : `📍 ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
 }
+
+function initPickerMap() { refreshPickerMap(); }
 
 function updatePickerStatus(text) {
   const el = document.getElementById('picker-status');
   if (el) el.textContent = text;
 }
+
+// Live-update the map as the location fields change. Typing manually clears any
+// pinned coordinate so the typed text (not a stale GPS pin) drives the search.
+let pickerRefreshTimer = null;
+['location-input', 'country-input', 'zip-input', 'street-input'].forEach(elId => {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    pickerState.lat = null;
+    pickerState.lng = null;
+    clearTimeout(pickerRefreshTimer);
+    pickerRefreshTimer = setTimeout(refreshPickerMap, 500);
+  });
+});
 
 // ============================================================
 //  ALL LEADS MAP VIEW

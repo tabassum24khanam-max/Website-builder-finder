@@ -23,8 +23,10 @@ const OVERPASS_ENDPOINTS = [
 ];
 
 async function geocode(query) {
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'LeadHunter/2.0 (lead-discovery)' } });
+  // accept-language=en gives consistent English place names (vital for building
+  // clean Serper queries from a geocoded area, e.g. a Saudi zip → "Al Rawdah").
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1&accept-language=en`;
+  const res = await fetch(url, { headers: { 'User-Agent': 'LeadHunter/2.0 (lead-discovery)', 'Accept-Language': 'en' } });
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.length) return null;
@@ -34,6 +36,42 @@ async function geocode(query) {
     display: data[0].display_name,
     address: data[0].address || {},
   };
+}
+
+// Robust geocode: Nominatim is spelling/format sensitive (e.g. "Ibn Khaldun,
+// Riyadh" fails but "13211, Saudi Arabia" resolves exactly). Try the most
+// specific phrasings first and fall back to broader ones. `precision` tells the
+// caller how tight a distance filter is safe — a city-level hit must not trim
+// far-side neighborhoods, a zip/neighborhood hit can be filtered tightly.
+async function geocodeBest({ neighborhood, city, zip, country }) {
+  neighborhood = (neighborhood || '').trim();
+  city = (city || '').trim();
+  zip = (zip || '').trim();
+  country = (country || '').trim();
+  const C = country ? `, ${country}` : '';
+
+  // [query, precision] — precision: 'precise' (zip/neighborhood) | 'city'
+  const variants = [];
+  if (neighborhood && city) variants.push([`${neighborhood}, ${city}${C}`, 'precise']);
+  if (zip && city)          variants.push([`${zip}, ${city}${C}`, 'precise']);
+  if (zip && country)       variants.push([`${zip}${C}`, 'precise']);
+  if (zip)                  variants.push([`${zip}`, 'precise']);
+  if (neighborhood && country) variants.push([`${neighborhood}${C}`, 'precise']);
+  if (city && country)      variants.push([`${city}${C}`, 'city']);
+  if (city)                 variants.push([`${city}`, 'city']);
+  if (country)              variants.push([`${country}`, 'country']);
+
+  const seen = new Set();
+  for (const [v, precision] of variants) {
+    const key = v.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    try {
+      const g = await geocode(v);
+      if (g) return { ...g, precision, query: v };
+    } catch {}
+  }
+  return null;
 }
 
 async function overpassQuery(query) {
@@ -157,4 +195,4 @@ function prettyCategory(t) {
   return t.amenity || t.shop || t.tourism || t.office || t.leisure || t.craft || null;
 }
 
-module.exports = { findBusinessesOSM, geocode };
+module.exports = { findBusinessesOSM, geocode, geocodeBest };

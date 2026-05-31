@@ -32,7 +32,9 @@ function stopSearch(searchId) {
 }
 
 async function runSearch(searchConfig, broadcast) {
-  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only, neighborhood } = searchConfig;
+  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only, neighborhood, zip, city } = searchConfig;
+  const cityLabel = city || location; // display/enrichment city
+  const targetCount = limit_count || 20;
 
   const state = { stopped: false };
   activeSearches.set(searchId, state);
@@ -43,7 +45,7 @@ async function runSearch(searchConfig, broadcast) {
   let leadsFound = 0;
 
   try {
-    const businesses = await discover({ category, location, neighborhood, country, lat, lng, radius_km, limit_count, log });
+    const businesses = await discover({ category, city: cityLabel, neighborhood, zip, country, lat, lng, radius_km, limit_count, log });
     if (!businesses.length) {
       log('❌  No businesses found. Try a different category or location.', 'error');
       q.updateSearchStatus.run({ id: searchId, status: 'done', leads_found: 0 });
@@ -60,17 +62,19 @@ async function runSearch(searchConfig, broadcast) {
       broadcast({ type: 'agent_step', searchId, step: 'analyzing', businessName: biz.name });
 
       // Overall hard cap per business — if anything drags, we move on.
-      const lead = await withTimeout(processBusiness(biz, { location, country, no_website_only }, log, shouldStop), BUSINESS_BUDGET_MS, null);
+      const lead = await withTimeout(processBusiness(biz, { location: cityLabel, country, category, no_website_only }, log, shouldStop), BUSINESS_BUDGET_MS, null);
 
       if (!lead) { log(`⏭️  Skipped ${biz.name} (timed out or no data)`, 'warn'); continue; }
       if (lead.skip) { log(`⏭️  Skipping ${biz.name} — ${lead.reason}`, 'info'); continue; }
 
       const leadId = uuid();
-      q.insertLead.run(toRow(leadId, searchId, location, category, lead));
+      q.insertLead.run(toRow(leadId, searchId, cityLabel, category, lead));
       leadsFound++;
       log(`🏆 Score ${lead.aiScore}/10 — ${lead.name} saved`, lead.aiScore >= 7 ? 'success' : 'info');
       broadcast({ type: 'lead_found', searchId, lead: { id: leadId, ...lead, searchId } });
 
+      // Honor the requested count — stop once we've saved that many leads.
+      if (leadsFound >= targetCount) { log(`🎯 Reached target of ${targetCount} leads.`, 'success'); break; }
       if (!shouldStop()) await delay(DELAY);
     }
 
@@ -88,27 +92,30 @@ async function runSearch(searchConfig, broadcast) {
 
 // ── Discovery with fallbacks ─────────────────────────────────────────────────
 
-async function discover({ category, location, neighborhood, country, lat, lng, radius_km, limit_count, log }) {
-  // 1. Serper /places (primary) — neighborhood goes into `q` via AI query variants
+async function discover({ category, city, neighborhood, zip, country, lat, lng, radius_km, limit_count, log }) {
+  const tag = b => b.map(x => ({ ...x, instagramHint: x.instagramHint || null, searchedCategory: x.searchedCategory || category }));
+
+  // 1. Serper /places (primary) — neighborhood in `q`, ll pin + distance filter
   try {
-    const b = await findBusinessesSerper({ category, location, neighborhood, country, lat, lng, limit: limit_count || 20, log });
-    if (b.length) return b;
+    const b = await findBusinessesSerper({ category, city, neighborhood, zip, country, lat, lng, radiusKm: radius_km || 10, limit: limit_count || 20, log });
+    if (b.length) return tag(b);
   } catch (e) { log(`⚠️  Serper Places failed: ${e.message}`, 'warn'); }
 
   // 2. Google Places API (only if a key is configured)
   if (process.env.GOOGLE_PLACES_API_KEY) {
     log('⚠️  Trying Google Places API...', 'warn');
     try {
-      const b = await findBusinessesPlaces({ category, location, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 20, log });
-      if (b.length) return b;
+      const b = await findBusinessesPlaces({ category, location: city, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 20, log });
+      if (b.length) return tag(b);
     } catch (e) { log(`⚠️  Google Places API failed: ${e.message}`, 'warn'); }
   }
 
   // 3. OpenStreetMap (last resort)
   log('⚠️  Falling back to OpenStreetMap...', 'warn');
   try {
-    const b = await findBusinessesOSM({ category, location, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 30, noWebsiteOnly: false, log });
-    if (b.length) return b.map(x => ({ ...x, instagramHint: x.instagramHint || null }));
+    const loc = [neighborhood, city].filter(Boolean).join(', ') || zip || city;
+    const b = await findBusinessesOSM({ category, location: loc, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 30, noWebsiteOnly: false, log });
+    if (b.length) return tag(b);
   } catch (e) { log(`⚠️  OpenStreetMap also failed: ${e.message}`, 'warn'); }
 
   return [];
@@ -116,7 +123,7 @@ async function discover({ category, location, neighborhood, country, lat, lng, r
 
 // ── Per-business pipeline ────────────────────────────────────────────────────
 
-async function processBusiness(biz, { location, country, no_website_only }, log, shouldStop) {
+async function processBusiness(biz, { location, country, category, no_website_only }, log, shouldStop) {
   // Step 2 — enrich (website / phone / address / IG) via one /search
   await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
   if (shouldStop()) return null;
@@ -168,15 +175,21 @@ async function processBusiness(biz, { location, country, no_website_only }, log,
   // Step 7 — Score
   log('🤖 Scoring lead...');
   const score = await withTimeout(scoreLead({
-    name: biz.name, category: biz.category, city: location, country, address: biz.address,
+    name: biz.name, category: biz.category, searchedCategory: biz.searchedCategory || category, city: location, country, address: biz.address,
     phone, website: biz.website, websiteStatus, rating: biz.rating, reviewCount: biz.reviewCount,
     instagramHandle: ig.handle, instagramFollowers: ig.followers,
     linkedinCompanyUrl: li.companyUrl, ownerName: li.ownerName, email,
-  }), 24000, { isIndependent: true, aiScore: biz.website ? 4 : 6, marketingScore: ig.handle ? 5 : 2, aiReasoning: 'Scored without AI (timeout).', outreachMessage: null });
+  }), 24000, { isIndependent: true, categoryMatch: true, aiScore: biz.website ? 4 : 6, marketingScore: ig.handle ? 5 : 2, aiReasoning: 'Scored without AI (timeout).', outreachMessage: null });
 
   // Drop chains/franchises flagged by the AI (catches brands not on the denylist).
   if (score.isIndependent === false) {
     return { skip: true, reason: 'AI flagged it as a chain/franchise (not independent)' };
+  }
+
+  // Drop businesses that aren't actually the searched category (e.g. a burger
+  // joint surfacing in a "cafes" search).
+  if (score.categoryMatch === false) {
+    return { skip: true, reason: `not a ${biz.searchedCategory || category} (AI category mismatch)` };
   }
 
   // Drop leads we cannot contact at all — a lead with no contact is worthless.

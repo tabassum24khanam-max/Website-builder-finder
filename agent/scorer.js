@@ -8,7 +8,7 @@ const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 async function scoreLead(data) {
   const {
-    name, category, city, country, address, phone, website, websiteStatus,
+    name, category, searchedCategory, city, country, address, phone, website, websiteStatus,
     rating, reviewCount, instagramHandle, instagramFollowers,
     linkedinCompanyUrl, ownerName, email,
   } = data;
@@ -37,7 +37,13 @@ BUSINESS:
 - Owner: ${ownerName || 'unknown'}
 - Email: ${email || 'not found'}
 
-First decide is_independent: true if this is a single independent local business
+The user is searching specifically for: "${searchedCategory || category}".
+First decide category_match: true if this business plausibly IS a "${searchedCategory || category}"
+(treat close types as a match, e.g. a coffee shop/roastery counts as a cafe);
+false only if it is clearly a different kind of business (e.g. a car wash, a
+burger joint, or a hardware store showing up in a "cafe" search).
+
+Then decide is_independent: true if this is a single independent local business
 (a good lead); false if it is a chain, franchise, or large multi-location brand
 (NOT a lead — we only want independents).
 
@@ -54,7 +60,7 @@ outreach_message: 3-4 friendly, non-salesy sentences mentioning their name and
 something specific; offer website help. Only if ai_score >= 5, else null.
 
 Respond in JSON:
-{ "is_independent": true, "ai_score": <int>, "marketing_score": <int>, "ai_reasoning": "<one sentence>", "outreach_message": "<message or null>" }`;
+{ "category_match": true, "is_independent": true, "ai_score": <int>, "marketing_score": <int>, "ai_reasoning": "<one sentence>", "outreach_message": "<message or null>" }`;
 
   try {
     const res = await openai.chat.completions.create({
@@ -67,6 +73,7 @@ Respond in JSON:
     const r = JSON.parse(res.choices[0].message.content);
     return {
       isIndependent: r.is_independent !== false, // default to keeping it
+      categoryMatch: r.category_match !== false,  // default to keeping it
       aiScore: clamp(r.ai_score, 5),
       marketingScore: clamp(r.marketing_score, 5),
       aiReasoning: r.ai_reasoning || '',
@@ -76,6 +83,7 @@ Respond in JSON:
     const hasWebsite = websiteStatus && !['none', 'social_only', 'linktree'].includes(websiteStatus);
     return {
       isIndependent: true,
+      categoryMatch: true,
       aiScore: hasWebsite ? 3 : 6,
       marketingScore: instagramHandle ? 5 : 2,
       aiReasoning: 'AI scoring temporarily unavailable.',

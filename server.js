@@ -67,14 +67,15 @@ app.post('/api/searches', (req, res) => {
   const effectiveRadius = parseInt(radius_km || radius) || 5;
   const effectiveCount = parseInt(limit_count || count) || 20;
 
-  // The Serper `location` param only handles city-level targeting — neighborhoods
-  // and zip codes are ignored. Keep the primary location CLEAN (city or zip only).
-  // The `street` field holds the neighborhood/district; it goes into `q` via the
-  // AI query generator, not the `location` param.
-  const cleanLocation = (location || zip || '').trim();
+  // Keep the structured location parts separate — the agent geocodes the most
+  // specific combination (neighborhood/zip/city) for a precise center and a hard
+  // distance filter, instead of stuffing everything into one ambiguous string.
+  const city = (location || '').trim();
+  const zipCode = (zip || '').trim();
   const neighborhood = (street || '').trim() || null;
+  const cleanLocation = city || zipCode || neighborhood || ''; // for DB / display
   if (!category || !cleanLocation) {
-    return res.status(400).json({ error: 'category and a location (city or zip) are required' });
+    return res.status(400).json({ error: 'category and a location (city, zip, or neighborhood) are required' });
   }
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'sk-paste-your-key-here') {
     return res.status(400).json({ error: 'OpenAI API key not configured. Check your .env file.' });
@@ -92,6 +93,8 @@ app.post('/api/searches', (req, res) => {
   search.lng = parseFloat(lng) || null;
   search.no_website_only = !!no_website_only;
   search.neighborhood = neighborhood;
+  search.city = city || null;
+  search.zip = zipCode || null;
 
   res.json({ success: true, search });
 

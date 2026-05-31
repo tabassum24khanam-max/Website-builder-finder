@@ -9,11 +9,20 @@ async function findLinkedIn({ name, city, country }, log) {
   const apiKey = process.env.SERPER_API_KEY;
   if (!apiKey) return result;
 
-  log(`💼 Searching LinkedIn for: ${name}`);
-  const loc = [city, country].filter(Boolean).join(' ');
   const sn = cleanSearchName(name);
   const nameCore = normalizeForMatch(sn);
   const namePrefix = sn.toLowerCase().slice(0, Math.min(8, sn.length));
+
+  // Very short/generic names ("ON", "Drip") can't be matched reliably — any
+  // LinkedIn hit would be a guess (this produced the wrong "Future Link for
+  // Technology" match for "ON"). Better to return nothing than a wrong company.
+  if (nameCore.length < 4) {
+    log(`💼 Skipping LinkedIn for "${name}" — name too generic to match reliably`);
+    return result;
+  }
+
+  log(`💼 Searching LinkedIn for: ${name}`);
+  const loc = [city, country].filter(Boolean).join(' ');
 
   // Company page
   try {
