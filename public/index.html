@@ -962,14 +962,23 @@
           </div>
         </div>
 
-        <!-- Map preview (Google Maps) -->
+        <!-- Map preview (Google Maps, keyless) with a tap-to-pin overlay -->
         <div class="form-group" style="margin-bottom:16px;">
-          <label class="form-label">Search Area <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(updates as you type the city, area & zip — or tap 📍 for your location)</span></label>
+          <label class="form-label">Search Area <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(updates as you type — or tap the map to drop your search pin)</span></label>
           <div id="picker-map" style="height:280px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface2);overflow:hidden;position:relative;">
-            <iframe id="picker-frame" title="Search area preview" style="width:100%;height:100%;border:0;display:none;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
-            <div id="picker-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text-dim);font-size:13px;padding:20px;">🗺️ Type a city / area or tap 📍 to preview your search area on Google Maps</div>
+            <iframe id="picker-frame" title="Search area preview" style="width:100%;height:100%;border:0;display:none;position:absolute;inset:0;z-index:0;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <div id="picker-clicklayer" title="Tap to drop your search pin" style="position:absolute;inset:0;z-index:1;cursor:crosshair;display:none;"></div>
+            <div id="picker-hint" style="position:absolute;left:8px;top:8px;z-index:2;display:none;background:rgba(0,0,0,0.62);color:#fff;font-size:11px;padding:3px 9px;border-radius:6px;pointer-events:none;">👆 Tap the map to set your search pin</div>
+            <div id="picker-zoom" style="position:absolute;top:8px;right:8px;z-index:2;display:none;flex-direction:column;gap:5px;">
+              <button type="button" id="picker-zoom-in" style="width:30px;height:30px;border:none;border-radius:6px;background:var(--amber);color:#000;font-size:18px;font-weight:700;cursor:pointer;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.4);">+</button>
+              <button type="button" id="picker-zoom-out" style="width:30px;height:30px;border:none;border-radius:6px;background:var(--amber);color:#000;font-size:18px;font-weight:700;cursor:pointer;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.4);">−</button>
+            </div>
+            <div id="picker-placeholder" style="position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text-dim);font-size:13px;padding:20px;">🗺️ Type a city / area or tap 📍 to preview your search area on Google Maps</div>
           </div>
-          <div id="picker-status" style="font-size:11.5px;color:var(--text-dim);margin-top:6px;">Tip: add a Street / Neighborhood to narrow the search to that exact area.</div>
+          <div id="picker-status" style="font-size:11.5px;color:var(--text-dim);margin-top:6px;display:flex;justify-content:space-between;gap:10px;align-items:center;">
+            <span id="picker-status-text">Tip: tap the map to fine-tune the exact spot — the address fields update automatically.</span>
+            <a id="picker-open-maps" href="#" target="_blank" rel="noopener" style="display:none;color:var(--amber);white-space:nowrap;text-decoration:none;">Open in Google Maps ↗</a>
+          </div>
         </div>
 
         <div class="form-row-3" style="margin-bottom:16px;">
@@ -2347,12 +2356,15 @@ async function useCurrentLocation() {
 }
 
 // ============================================================
-//  PICKER MAP — Google Maps embed (keyless), driven by the inputs
+//  PICKER MAP — keyless Google Maps embed + tap-to-pin overlay
 // ============================================================
-// pickerState.lat/lng are only set from a precise source (a picked suggestion
-// or GPS). When the user types freely they stay null and the backend geocodes
-// the text — which now resolves zip/neighborhood precisely on its own.
-const pickerState = { lat: null, lng: null };
+// The Google "embed" iframe is cross-origin, so it can't report taps. The trick:
+// WE set the embed's center + zoom, so a tap's pixel offset can be converted to
+// a real lat/lng with Web-Mercator math (the same projection Google uses). A
+// transparent overlay captures the tap. Result: a tappable "Google" map with no
+// API key. Driving the embed by coordinates (q=lat,lng) means its center is
+// exactly our center, so the math is pixel-accurate.
+const pickerState = { lat: null, lng: null, zoom: 14 };
 
 function pickerQueryText() {
   const v = id => (document.getElementById(id)?.value || '').trim();
@@ -2360,47 +2372,156 @@ function pickerQueryText() {
     .filter(Boolean).join(', ');
 }
 
+// Web-Mercator pixel projection (256px tiles — identical to Google's).
+function mercProject(lat, lng, z) {
+  const scale = 256 * Math.pow(2, z);
+  const siny = Math.min(Math.max(Math.sin(lat * Math.PI / 180), -0.9999), 0.9999);
+  return {
+    x: (lng + 180) / 360 * scale,
+    y: (0.5 - Math.log((1 + siny) / (1 - siny)) / (4 * Math.PI)) * scale,
+  };
+}
+function mercUnproject(x, y, z) {
+  const scale = 256 * Math.pow(2, z);
+  const lng = x / scale * 360 - 180;
+  const n = Math.PI - 2 * Math.PI * y / scale;
+  const lat = 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+  return { lat, lng };
+}
+
 function googleEmbedSrc() {
-  if (pickerState.lat && pickerState.lng) {
-    return `https://www.google.com/maps?q=${pickerState.lat},${pickerState.lng}&z=14&hl=en&output=embed`;
+  const z = pickerState.zoom;
+  if (pickerState.lat != null && pickerState.lng != null) {
+    return `https://www.google.com/maps?q=${pickerState.lat},${pickerState.lng}&z=${z}&hl=en&output=embed`;
   }
   const q = pickerQueryText();
   if (!q) return '';
-  return `https://www.google.com/maps?q=${encodeURIComponent(q)}&z=13&hl=en&output=embed`;
+  return `https://www.google.com/maps?q=${encodeURIComponent(q)}&z=${z}&hl=en&output=embed`;
 }
 
 function refreshPickerMap() {
   const frame = document.getElementById('picker-frame');
   const placeholder = document.getElementById('picker-placeholder');
+  const overlay = document.getElementById('picker-clicklayer');
+  const zoomCtl = document.getElementById('picker-zoom');
+  const hint = document.getElementById('picker-hint');
+  const openLink = document.getElementById('picker-open-maps');
   if (!frame) return;
   const src = googleEmbedSrc();
-  if (!src) {
-    frame.style.display = 'none';
-    if (placeholder) placeholder.style.display = 'flex';
-    return;
+  const show = !!src;
+  frame.style.display = show ? 'block' : 'none';
+  if (placeholder) placeholder.style.display = show ? 'none' : 'flex';
+  if (overlay) overlay.style.display = show ? 'block' : 'none';
+  if (zoomCtl) zoomCtl.style.display = show ? 'flex' : 'none';
+  if (hint) hint.style.display = show ? 'block' : 'none';
+  if (show && frame.getAttribute('src') !== src) frame.setAttribute('src', src);
+  if (openLink) {
+    if (show && pickerState.lat != null) {
+      openLink.style.display = '';
+      openLink.href = `https://www.google.com/maps/search/?api=1&query=${pickerState.lat},${pickerState.lng}`;
+    } else { openLink.style.display = 'none'; }
   }
-  if (frame.getAttribute('src') !== src) frame.setAttribute('src', src);
-  frame.style.display = 'block';
-  if (placeholder) placeholder.style.display = 'none';
 }
 
-// Called when a precise coordinate is chosen (suggestion click or GPS).
-function setPickerLocation(lat, lng, label) {
+// Ensure a numeric map center exists for the tap math. If the map currently
+// shows a typed text query, geocode it once to learn the center, then re-render
+// by coordinates so the embed center matches exactly.
+async function ensurePickerCenter() {
+  if (pickerState.lat != null && pickerState.lng != null) return true;
+  const q = pickerQueryText();
+  if (!q) return false;
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`, { headers: { 'Accept-Language': 'en' } });
+    const data = await res.json();
+    if (data && data.length) {
+      pickerState.lat = parseFloat(data[0].lat);
+      pickerState.lng = parseFloat(data[0].lon);
+      refreshPickerMap();
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+// Convert a tap on the overlay to a lat/lng, then drop the pin there.
+async function handlePickerClick(e) {
+  const overlay = document.getElementById('picker-clicklayer');
+  if (!overlay) return;
+  const rect = overlay.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  // Was the map already coordinate-centered (so we know its exact center)?
+  const hadCoords = pickerState.lat != null && pickerState.lng != null;
+  updatePickerStatus('📍 Setting pin…');
+  const ok = await ensurePickerCenter();
+  if (!ok) { showToast('warn', '⚠️', 'Type a city first, then tap to fine-tune the spot.'); updatePickerStatus('Type a city, then tap the map to fine-tune.'); return; }
+  if (!hadCoords) {
+    // The map was centered on Google's geocode of typed text — its exact center
+    // is unknown, so don't apply a pixel offset; pin the geocoded center. The map
+    // is now coordinate-driven, so the NEXT tap is pixel-accurate.
+    await setPickerLocation(pickerState.lat, pickerState.lng, null, true);
+    return;
+  }
+  const z = pickerState.zoom;
+  const c = mercProject(pickerState.lat, pickerState.lng, z);
+  const pt = mercUnproject(c.x + (px - rect.width / 2), c.y + (py - rect.height / 2), z);
+  await setPickerLocation(pt.lat, pt.lng, null, true);
+}
+
+// Set a precise pin; recenters the embed (Google's q-marker = our pin) and, when
+// fillFields is true, reverse-geocodes to refresh City/Area, Neighborhood & Zip.
+async function setPickerLocation(lat, lng, label, fillFields) {
   pickerState.lat = lat;
   pickerState.lng = lng;
   refreshPickerMap();
   updatePickerStatus(label ? `📍 ${label}` : `📍 ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
+  if (fillFields) {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`, { headers: { 'Accept-Language': 'en' } });
+      const data = await res.json();
+      const a = data.address || {};
+      const city = a.city || a.town || a.village || a.municipality || a.county || '';
+      const hood = a.neighbourhood || a.suburb || a.quarter || a.city_district || a.residential || '';
+      if (city) setFieldValueSilently('location-input', city);
+      if (a.country) setFieldValueSilently('country-input', a.country);
+      if (a.postcode) setFieldValueSilently('zip-input', a.postcode);
+      if (hood) setFieldValueSilently('street-input', hood);
+      const labelTxt = [hood, city].filter(Boolean).join(', ') || (data.display_name || '').split(',').slice(0, 2).join(', ');
+      updatePickerStatus(`📍 ${labelTxt || `${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`}`);
+    } catch {}
+  }
 }
 
-function initPickerMap() { refreshPickerMap(); }
+// Set a field's value WITHOUT firing its 'input' listener (which would clear the
+// pin we just set from the map tap).
+function setFieldValueSilently(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val;
+}
+
+function changePickerZoom(delta) {
+  pickerState.zoom = Math.min(18, Math.max(3, pickerState.zoom + delta));
+  refreshPickerMap();
+}
+
+function initPickerMap() {
+  refreshPickerMap();
+  const overlay = document.getElementById('picker-clicklayer');
+  if (overlay && !overlay.__wired) { overlay.__wired = true; overlay.addEventListener('click', handlePickerClick); }
+  const zi = document.getElementById('picker-zoom-in');
+  const zo = document.getElementById('picker-zoom-out');
+  if (zi && !zi.__wired) { zi.__wired = true; zi.addEventListener('click', () => changePickerZoom(1)); }
+  if (zo && !zo.__wired) { zo.__wired = true; zo.addEventListener('click', () => changePickerZoom(-1)); }
+}
 
 function updatePickerStatus(text) {
-  const el = document.getElementById('picker-status');
+  const el = document.getElementById('picker-status-text');
   if (el) el.textContent = text;
 }
 
-// Live-update the map as the location fields change. Typing manually clears any
-// pinned coordinate so the typed text (not a stale GPS pin) drives the search.
+// Live-update the map as the location fields change. Typing clears any pin so the
+// typed text drives the map; we then geocode (debounced) so the map is coordinate-
+// centered and immediately tappable again.
 let pickerRefreshTimer = null;
 ['location-input', 'country-input', 'zip-input', 'street-input'].forEach(elId => {
   const el = document.getElementById(elId);
@@ -2409,7 +2530,10 @@ let pickerRefreshTimer = null;
     pickerState.lat = null;
     pickerState.lng = null;
     clearTimeout(pickerRefreshTimer);
-    pickerRefreshTimer = setTimeout(refreshPickerMap, 500);
+    pickerRefreshTimer = setTimeout(async () => {
+      await ensurePickerCenter();   // learn coords so taps work; re-renders if found
+      refreshPickerMap();           // falls back to text embed if geocode failed
+    }, 600);
   });
 });
 
