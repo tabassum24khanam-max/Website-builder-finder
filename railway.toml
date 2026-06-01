@@ -2,7 +2,7 @@
 dockerfilePath = "Dockerfile"
 
 [deploy]
-healthcheckPath = "/api/scrape/status"
-healthcheckTimeout = 30
+healthcheckPath = "/api/stats"
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
