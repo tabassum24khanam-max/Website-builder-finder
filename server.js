@@ -39,12 +39,6 @@ function broadcast(data) {
   }
 }
 
-// ─── Client config (Google Maps browser key — referrer-restricted, safe to expose) ──
-
-app.get('/api/config', (req, res) => {
-  res.json({ googleMapsKey: process.env.GOOGLE_MAPS_API_KEY || '' });
-});
-
 // ─── Searches ────────────────────────────────────────────────────────────────
 
 app.get('/api/searches', (req, res) => {

@@ -856,22 +856,15 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  /* Amber zoom controls on the Leaflet leads map (and picker fallback) */
-  #picker-canvas .leaflet-control-zoom a,
+  /* Amber zoom controls on the Leaflet leads map */
   #leads-map .leaflet-control-zoom a {
     background: var(--amber) !important;
     color: #000 !important;
     border-color: var(--amber-dim) !important;
     font-weight: 700;
   }
-  #picker-canvas .leaflet-control-zoom a:hover,
   #leads-map .leaflet-control-zoom a:hover {
     background: var(--amber-dim) !important;
-  }
-  #picker-canvas .leaflet-control-attribution {
-    background: rgba(0,0,0,0.6) !important;
-    color: #aaa !important;
-    font-size: 9px;
   }
 </style>
 </head>
@@ -981,14 +974,15 @@
           </div>
         </div>
 
-        <!-- Map picker — Leaflet + CartoDB dark tiles: full native pan/zoom/tap -->
+        <!-- Map picker — keyless Google Maps embed (interactive: drag to move) -->
         <div class="form-group" style="margin-bottom:16px;">
-          <label class="form-label">Search Area <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(updates as you type — tap the map to set your search pin)</span></label>
+          <label class="form-label">Search Area <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(updates as you type — drag the map to move around)</span></label>
           <div id="picker-map" style="height:280px;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;position:relative;background:#1a1f2e;">
-            <div id="picker-canvas" style="height:100%;width:100%;"></div>
+            <iframe id="picker-frame" title="Search area preview" style="width:100%;height:100%;border:0;display:none;" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <div id="picker-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--text-dim);font-size:13px;padding:20px;pointer-events:none;">🗺️ Type a City / Area above to preview it on Google Maps — then drag to move around</div>
           </div>
           <div id="picker-status" style="font-size:11.5px;color:var(--text-dim);margin-top:6px;display:flex;justify-content:space-between;gap:10px;align-items:center;">
-            <span id="picker-status-text">Tap the map to set your search pin — the address fields update automatically.</span>
+            <span id="picker-status-text">Type a City / Area, Neighborhood or Zip — the map updates, and you can drag &amp; zoom it freely.</span>
             <a id="picker-open-maps" href="#" target="_blank" rel="noopener" style="display:none;color:var(--amber);white-space:nowrap;text-decoration:none;">Open in Maps ↗</a>
           </div>
         </div>
@@ -2368,18 +2362,15 @@ async function useCurrentLocation() {
 }
 
 // ============================================================
-//  PICKER MAP — real Google Maps (JS API) with a Leaflet fallback
+//  PICKER MAP — keyless Google Maps embed (interactive / movable)
 // ============================================================
-// The Google Maps JavaScript API gives us native pan/zoom AND tap-to-drop-pin
-// (the keyless embed couldn't do both). gestureHandling:'greedy' = one-finger
-// pan on mobile. If no GOOGLE_MAPS_API_KEY is set, we fall back to Leaflet so
-// the app still works. pickerState.lat/lng feed into the form submission.
+// The keyless embed (output=embed) is a REAL interactive Google Map: drag to
+// pan, scroll/pinch to zoom — exactly like google.com/maps. We do NOT put an
+// overlay on top of it (that's what blocked panning before), so it's fully
+// movable. Because it's a cross-origin iframe we can't read taps/pan position,
+// so the search location comes from the typed fields (or an autocomplete / GPS
+// pick), not from clicking the map.
 const pickerState = { lat: null, lng: null, zoom: 13 };
-
-let MAPS_MODE = 'leaflet';   // 'google' once the API loads
-let pickerMap = null;        // google.maps.Map OR Leaflet map
-let pickerMarker = null;     // google.maps.Marker OR Leaflet marker
-let pickerGeocoder = null;   // google.maps.Geocoder (Google mode only)
 
 function pickerQueryText() {
   const v = id => (document.getElementById(id)?.value || '').trim();
@@ -2391,214 +2382,63 @@ function updatePickerStatus(text) {
   if (el) el.textContent = text;
 }
 
-function updateOpenLink(lat, lng) {
+// Build the embed URL — precise coords if we have them (from autocomplete/GPS),
+// otherwise the typed location text (Google geocodes it for us).
+function pickerEmbedSrc() {
+  const z = pickerState.zoom || 13;
+  if (pickerState.lat != null && pickerState.lng != null) {
+    return `https://www.google.com/maps?q=${pickerState.lat},${pickerState.lng}&z=${z}&hl=en&output=embed`;
+  }
+  const q = pickerQueryText();
+  if (!q) return '';
+  return `https://www.google.com/maps?q=${encodeURIComponent(q)}&z=${z}&hl=en&output=embed`;
+}
+
+// (Re)load the embed for the current location. Reloading only when the src
+// actually changes means a user's manual pan isn't reset by unrelated redraws.
+function refreshPickerMap() {
+  const frame = document.getElementById('picker-frame');
+  const placeholder = document.getElementById('picker-placeholder');
   const openLink = document.getElementById('picker-open-maps');
-  if (!openLink) return;
-  if (lat == null) { openLink.style.display = 'none'; return; }
-  openLink.style.display = '';
-  openLink.href = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-}
-
-// ── Load the Google Maps JS API using the browser key from /api/config ──
-let googleMapsPromise = null;
-function loadGoogleMaps() {
-  if (googleMapsPromise) return googleMapsPromise;
-  googleMapsPromise = (async () => {
-    try {
-      const cfg = await fetch('/api/config').then(r => r.json());
-      if (!cfg.googleMapsKey) return false;
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(cfg.googleMapsKey)}&v=quarterly`;
-        s.async = true; s.defer = true; s.onload = resolve; s.onerror = () => reject(new Error('maps script failed'));
-        document.head.appendChild(s);
-      });
-      return !!(window.google && window.google.maps);
-    } catch { return false; }
-  })();
-  return googleMapsPromise;
-}
-
-// ── Amber pin (Leaflet fallback) ──
-function pickerPinIcon() {
-  return L.divIcon({
-    className: '',
-    html: '<div style="width:16px;height:16px;background:#f0a500;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,.6);"></div>',
-    iconSize: [16, 16], iconAnchor: [8, 8],
-  });
-}
-
-// ── Place / move the draggable pin (works in both modes) ──
-function setPinMarker(lat, lng) {
-  if (!pickerMap) return; // map still loading — pickerState already holds the coords
-  if (MAPS_MODE === 'google') {
-    if (!pickerMarker) {
-      pickerMarker = new google.maps.Marker({
-        map: pickerMap, position: { lat, lng }, draggable: true, animation: google.maps.Animation.DROP,
-      });
-      pickerMarker.addListener('dragend', e => onPinSet(e.latLng.lat(), e.latLng.lng(), true));
-    } else {
-      pickerMarker.setPosition({ lat, lng });
-    }
-  } else {
-    if (!pickerMarker) {
-      pickerMarker = L.marker([lat, lng], { icon: pickerPinIcon(), draggable: true, zIndexOffset: 1000 }).addTo(pickerMap);
-      pickerMarker.on('dragend', e => { const p = e.target.getLatLng(); onPinSet(p.lat, p.lng, true); });
-    } else {
-      pickerMarker.setLatLng([lat, lng]);
-    }
+  if (!frame) return;
+  const src = pickerEmbedSrc();
+  const show = !!src;
+  frame.style.display = show ? 'block' : 'none';
+  if (placeholder) placeholder.style.display = show ? 'none' : 'flex';
+  if (show && frame.getAttribute('src') !== src) frame.setAttribute('src', src);
+  if (openLink) {
+    if (show) {
+      openLink.style.display = '';
+      const target = (pickerState.lat != null) ? `${pickerState.lat},${pickerState.lng}` : pickerQueryText();
+      openLink.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target)}`;
+    } else { openLink.style.display = 'none'; }
   }
-  updateOpenLink(lat, lng);
 }
 
-// User dropped/dragged the pin → record coords + reverse-geocode to fill fields.
-async function onPinSet(lat, lng, fill) {
-  pickerState.lat = lat; pickerState.lng = lng;
-  setPinMarker(lat, lng);
-  if (fill) { updatePickerStatus('📍 Setting location…'); await reverseFill(lat, lng); }
+// Called by selectLocation() (autocomplete) and useCurrentLocation() — these
+// give exact coords, so we center precisely and remember them for the search.
+function setPickerLocation(lat, lng, label) {
+  pickerState.lat = lat;
+  pickerState.lng = lng;
+  refreshPickerMap();
+  updatePickerStatus(label ? `📍 ${label} — drag the map to move around` : `📍 ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
 }
 
-// Recenter the map (without forcing a pin) — shared by both modes.
-function recenter(lat, lng, zoom) {
-  if (!pickerMap) return;
-  if (MAPS_MODE === 'google') { pickerMap.setCenter({ lat, lng }); if (zoom) pickerMap.setZoom(zoom); }
-  else { pickerMap.setView([lat, lng], zoom || pickerState.zoom); }
+function initPickerMap() {
+  refreshPickerMap();
 }
 
-// ── Reverse geocode (lat/lng → address), Google first, Nominatim fallback ──
-async function reverseFill(lat, lng) {
-  let a = null;
-  if (MAPS_MODE === 'google' && pickerGeocoder) a = await googleReverse(lat, lng);
-  if (!a) a = await nominatimReverse(lat, lng);
-  if (!a) { updatePickerStatus(`📍 ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`); return; }
-  const setQ = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
-  setQ('location-input', a.city);
-  setQ('country-input', a.country);
-  setQ('zip-input', a.postcode);
-  setQ('street-input', a.hood);
-  const label = [a.hood, a.city].filter(Boolean).join(', ');
-  updatePickerStatus(`📍 ${label || `${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`}`);
-}
-
-function googleReverse(lat, lng) {
-  return new Promise(resolve => {
-    pickerGeocoder.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status !== 'OK' || !results || !results.length) return resolve(null);
-      const comps = results[0].address_components || [];
-      const get = (...types) => { for (const t of types) { const c = comps.find(x => x.types.includes(t)); if (c) return c.long_name; } return ''; };
-      resolve({
-        city: get('locality', 'postal_town', 'administrative_area_level_2', 'administrative_area_level_1'),
-        hood: get('neighborhood', 'sublocality', 'sublocality_level_1', 'route'),
-        postcode: get('postal_code'),
-        country: get('country'),
-      });
-    });
-  });
-}
-
-async function nominatimReverse(lat, lng) {
-  try {
-    const data = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`).then(r => r.json());
-    const a = data.address || {};
-    return {
-      city: a.city || a.town || a.village || a.municipality || a.county || '',
-      hood: a.neighbourhood || a.suburb || a.quarter || a.city_district || a.residential || '',
-      postcode: a.postcode || '', country: a.country || '',
-    };
-  } catch { return null; }
-}
-
-// ── Forward geocode (text → lat/lng), Google first, Nominatim fallback ──
-async function geocodeAndFly() {
-  const q = pickerQueryText();
-  if (!q) return;
-  let pt = null;
-  if (MAPS_MODE === 'google' && pickerGeocoder) pt = await googleForward(q);
-  if (!pt) pt = await nominatimForward(q);
-  if (pt) { pickerState.lat = pt.lat; pickerState.lng = pt.lng; recenter(pt.lat, pt.lng); }
-}
-
-function googleForward(q) {
-  return new Promise(resolve => {
-    pickerGeocoder.geocode({ address: q }, (results, status) => {
-      if (status !== 'OK' || !results || !results.length) return resolve(null);
-      const loc = results[0].geometry.location;
-      resolve({ lat: loc.lat(), lng: loc.lng() });
-    });
-  });
-}
-
-async function nominatimForward(q) {
-  try {
-    const data = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`, { headers: { 'Accept-Language': 'en' } }).then(r => r.json());
-    if (data && data.length) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-  } catch {}
-  return null;
-}
-
-// Called by selectLocation() (autocomplete) and useCurrentLocation().
-async function setPickerLocation(lat, lng, label, fillFields) {
-  pickerState.lat = lat; pickerState.lng = lng;
-  recenter(lat, lng, 15);
-  setPinMarker(lat, lng);
-  updatePickerStatus(label ? `📍 ${label}` : `📍 ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
-  if (fillFields) await reverseFill(lat, lng);
-}
-
-// ── Init: prefer Google, fall back to Leaflet ──
-async function initPickerMap() {
-  if (pickerMap) return;
-  let ok = false;
-  try { ok = await loadGoogleMaps(); } catch { ok = false; }
-  try {
-    if (ok) initPickerGoogle(); else initPickerLeaflet();
-  } catch (e) {
-    // If the Google path blew up, make sure we still get a working map.
-    if (!pickerMap && window.L) initPickerLeaflet();
-  }
-  const q = pickerQueryText();
-  if (q) geocodeAndFly();
-}
-
-function initPickerGoogle() {
-  MAPS_MODE = 'google';
-  pickerMap = new google.maps.Map(document.getElementById('picker-canvas'), {
-    center: { lat: 24.7136, lng: 46.6753 }, zoom: pickerState.zoom,
-    mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
-    clickableIcons: false, gestureHandling: 'greedy',
-  });
-  pickerGeocoder = new google.maps.Geocoder();
-  pickerMap.addListener('click', e => onPinSet(e.latLng.lat(), e.latLng.lng(), true));
-  pickerMap.addListener('zoom_changed', () => { pickerState.zoom = pickerMap.getZoom(); });
-}
-
-function initPickerLeaflet() {
-  MAPS_MODE = 'leaflet';
-  pickerMap = L.map('picker-canvas', { center: [24.7136, 46.6753], zoom: pickerState.zoom, zoomControl: false });
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/voyager/{z}/{x}/{y}{r}.png', {
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OSM</a> © <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd', maxZoom: 19,
-  }).addTo(pickerMap);
-  L.control.zoom({ position: 'topright' }).addTo(pickerMap);
-  pickerMap.on('click', e => onPinSet(e.latlng.lat, e.latlng.lng, true));
-  pickerMap.on('zoomend', () => { pickerState.zoom = pickerMap.getZoom(); });
-}
-
-// Debounced live-update: as the user types, fly the map to the new location.
+// Typing updates the map. We clear any precise coords so the embed follows the
+// freshly typed text; the backend geocodes those fields to center the search.
 let pickerRefreshTimer = null;
 ['location-input', 'country-input', 'zip-input', 'street-input'].forEach(elId => {
   const el = document.getElementById(elId);
   if (!el) return;
   el.addEventListener('input', () => {
-    pickerState.lat = null; pickerState.lng = null;
-    if (pickerMarker) {
-      if (MAPS_MODE === 'google') pickerMarker.setMap(null);
-      else if (pickerMap) pickerMap.removeLayer(pickerMarker);
-      pickerMarker = null;
-    }
-    updateOpenLink(null);
+    pickerState.lat = null;
+    pickerState.lng = null;
     clearTimeout(pickerRefreshTimer);
-    pickerRefreshTimer = setTimeout(geocodeAndFly, 700);
+    pickerRefreshTimer = setTimeout(refreshPickerMap, 600);
   });
 });
 
