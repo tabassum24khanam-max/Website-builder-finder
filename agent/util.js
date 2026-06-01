@@ -305,7 +305,7 @@ function getCountryCode(country) {
 module.exports = {
   UA, withTimeout, delay, haversineKm, httpGet, serper,
   normalizeForMatch, cleanUrl, isSocialOrDirectory,
-  extractPhones, bestPhone, pickPhone, normalizePhone, extractEmail, cleanSearchName,
+  extractPhones, isStrongPhone, bestPhone, pickPhone, normalizePhone, extractEmail, cleanSearchName,
   parseCount, parseFollowers, parsePosts,
   isInfluencerHandle, verifyHandle, getCountryCode,
 };

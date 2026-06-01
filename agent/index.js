@@ -18,12 +18,13 @@ const { findInstagram } = require('./instagram');
 const { findLinkedIn } = require('./linkedin');
 const { findEmail } = require('./email');
 const { scoreLead } = require('./scorer');
+const { findPhone: phoneAgentFind } = require('./phone-agent');
 const { withTimeout, delay } = require('./util');
 const { q } = require('../db');
 const { v4: uuid } = require('uuid');
 
 const DELAY = parseInt(process.env.SCRAPE_DELAY_MS || '300', 10);
-const BUSINESS_BUDGET_MS = 50000; // hard cap per business — guarantees forward progress
+const BUSINESS_BUDGET_MS = 60000; // 1-minute hard cap per business
 
 const activeSearches = new Map();
 function stopSearch(searchId) {
@@ -126,6 +127,20 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
 async function processBusiness(biz, { location, country, category, no_website_only }, log, shouldStop) {
   // Step 2 — enrich (website / phone / address / IG) via one /search
   await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
+  if (shouldStop()) return null;
+
+  // Step 2b — agentic phone hunt: run when enrichment found no phone, or only a
+  // toll-free/hotline number. The agent searches Google, opens Instagram bios,
+  // delivery apps, etc. — just like a human would.
+  const isTollFree = biz.phone && /^0?(800|920|8200|9200|1800)/.test(biz.phone.replace(/\D/g, ''));
+  if (!biz.phone || isTollFree) {
+    log('📞 Running phone agent…');
+    const found = await withTimeout(
+      phoneAgentFind({ name: biz.name, city: location, country, website: biz.website, instagramHandle: biz.instagramHint?.handle }, log),
+      45000, null
+    );
+    if (found) { biz.phone = found; log(`📞 Agent found: ${found}`); }
+  }
   if (shouldStop()) return null;
 
   // Step 3 — website classification
