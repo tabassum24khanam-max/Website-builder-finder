@@ -117,7 +117,7 @@ function cleanUrl(u) {
   try { new URL(s); return s.split('#')[0]; } catch { return null; }
 }
 
-const SOCIAL_OR_DIRECTORY = /instagram\.com|facebook\.com|fb\.com|tiktok\.com|linkedin\.com|youtube\.com|youtu\.be|twitter\.com|x\.com|snapchat\.com|pinterest\.|threads\.net|whatsapp\.com|wa\.me|t\.me|telegram\.|tripadvisor\.|yelp\.|foursquare\.|zomato\.|trustpilot\.|maps\.google|google\.[a-z.]+\/maps|goo\.gl\/maps|maps\.app|wikipedia\.org|wikiwand\.|wikidata\.|opentable\.|grubhub\.|doordash\.|ubereats\.|deliveroo\.|talabat\.|hungerstation\.|jahez\.|chefz\.|toyou\.|mrsool\.|noon\.com|amazon\.|booking\.com|agoda\.|expedia\.|hotels\.com|justdial\.|sulekha\.|menupages\.|wafyapp\.|mexil\.|linktr\.ee|bit\.ly|tinyurl\./i;
+const SOCIAL_OR_DIRECTORY = /instagram\.com|facebook\.com|fb\.com|tiktok\.com|linkedin\.com|youtube\.com|youtu\.be|twitter\.com|x\.com|snapchat\.com|pinterest\.|threads\.net|whatsapp\.com|wa\.me|t\.me|telegram\.|tripadvisor\.|yelp\.|foursquare\.|zomato\.|trustpilot\.|maps\.google|google\.[a-z.]+\/maps|goo\.gl\/maps|maps\.app|wikipedia\.org|wikiwand\.|wikidata\.|opentable\.|grubhub\.|doordash\.|ubereats\.|deliveroo\.|talabat\.|hungerstation\.|jahez\.|chefz\.|toyou\.|mrsool\.|swiggy\.|district\.in|noon\.com|amazon\.|booking\.com|agoda\.|expedia\.|hotels\.com|justdial\.|sulekha\.|menupages\.|wafyapp\.|mexil\.|linktr\.ee|bit\.ly|tinyurl\.|restaurants?-world\.|menu-world\.|menu-res\.|restaurant-?guru\.|wheree\.|near-place\.|top10place\.|places-world\.|\.menu-[a-z]+\.|restaurants?-guide\./i;
 
 function isSocialOrDirectory(url) {
   return SOCIAL_OR_DIRECTORY.test(url || '');
@@ -132,7 +132,7 @@ function extractPhones(text) {
   if (!text) return [];
   const out = [];
   const seen = new Set();
-  const re = /\+?\d[\d\s().\-]{6,18}\d/g;
+  const re = /\+?\(?\d[\d\s().\-]{6,18}\d/g;
   let m;
   while ((m = re.exec(text)) !== null) {
     const raw = m[0].trim();
@@ -227,7 +227,8 @@ function isValidPhone(raw, cc) {
     case 'us': case 'ca': return /^[2-9]\d{2}[2-9]\d{6}$/.test(nat); // NANP: area 2-9, exchange 2-9
     case 'gb': return /^[1-9]\d{8,9}$/.test(nat);
     case 'fr': return /^[1-9]\d{8}$/.test(nat);
-    case 'de': return /^[1-9]\d{5,11}$/.test(nat);
+    case 'de': return /^1[5-7]\d{8,9}$/.test(nat) || /^[2-9]\d{5,9}$/.test(nat); // mobile 15/16/17, else area code
+
     case 'in': return /^[1-9]\d{7,10}$/.test(nat);
     default: return nat.length >= 7 && nat.length <= 13;
   }
@@ -260,7 +261,10 @@ function cleanSearchName(name) {
 
 function normalizePhone(p) {
   if (!p) return null;
-  const s = String(p).replace(/[^\d+\s().\-]/g, '').replace(/\s+/g, ' ').trim();
+  let s = String(p).replace(/[^\d+\s().\-]/g, '').replace(/\s+/g, ' ').trim();
+  // Drop stray/unbalanced parentheses (e.g. a captured "347) 656-8146").
+  if ((s.match(/\(/g) || []).length !== (s.match(/\)/g) || []).length) s = s.replace(/[()]/g, '');
+  s = s.replace(/\s+/g, ' ').trim();
   return s.replace(/\D/g, '').length >= 8 ? s : null;
 }
 
