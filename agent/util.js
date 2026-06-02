@@ -147,10 +147,16 @@ function extractPhones(text) {
 
 // A "strong" phone looks like a real number: 10+ digits, or +/00 international.
 // This filters out short ID/price/date artifacts that appear in search snippets
-// (e.g. "12243-7058") — we prefer returning nothing over a wrong number.
+// (e.g. "12243-7058") — we prefer returning nothing over a wrong number. Also
+// rejects two real-world false positives seen in the wild: decimal ratings
+// ("4.5731707") and sequential filler ("1 2 3 4 5 6 7 8 9 10").
 function isStrongPhone(raw) {
-  const d = (raw || '').replace(/\D/g, '');
-  const intl = /^\s*\+/.test(raw) || d.startsWith('00');
+  const r = String(raw || '');
+  if (/^\s*\d{1,3}\.\d{3,}\s*$/.test(r)) return false;                          // decimal / rating, not a phone
+  const d = r.replace(/\D/g, '');
+  if (/^(\d)\1+$/.test(d)) return false;                                        // all-identical digits
+  if (/123456789|234567890|987654321|876543210/.test(d)) return false; // sequential filler (a full 9-run never occurs in a real number)
+  const intl = /^\s*\+/.test(r) || d.startsWith('00');
   if (intl) return d.length >= 10 && d.length <= 15;
   return d.length >= 10 && d.length <= 13;
 }
@@ -201,6 +207,8 @@ const DIAL = {
   se: '46', no: '47', dk: '45', fi: '358', pl: '48', gr: '30', tr: '90',
   in: '91', pk: '92', bd: '880', lk: '94', np: '977',
   sg: '65', my: '60', id: '62', th: '66', ph: '63', za: '27', ng: '234', ke: '254', ma: '212',
+  jp: '81', kr: '82', cn: '86', hk: '852', tw: '886', vn: '84',
+  br: '55', mx: '52', ar: '54', cl: '56', co: '57', pe: '51', ru: '7', ua: '380', ro: '40',
 };
 
 // Reduce any written form (+CC, 00CC, national 0-trunk, spaces/dashes) to the
@@ -228,9 +236,26 @@ function isValidPhone(raw, cc) {
     case 'gb': return /^[1-9]\d{8,9}$/.test(nat);
     case 'fr': return /^[1-9]\d{8}$/.test(nat);
     case 'de': return /^1[5-7]\d{8,9}$/.test(nat) || /^[2-9]\d{5,9}$/.test(nat); // mobile 15/16/17, else area code
-
     case 'in': return /^[1-9]\d{7,10}$/.test(nat);
-    default: return nat.length >= 7 && nat.length <= 13;
+    case 'jp': return /^([789]0\d{8}|[1-9]\d{8,9})$/.test(nat);       // mobile 70/80/90 or landline
+    case 'au': return /^[2-478]\d{8}$/.test(nat);                    // 9-digit national (mobile 4x)
+    case 'nl': return /^[1-9]\d{8}$/.test(nat);                      // 9-digit national
+    case 'es': return /^[6-9]\d{8}$/.test(nat);                      // 9-digit; mobile 6/7
+    case 'it': return /^3\d{8,9}$/.test(nat) || /^0\d{8,10}$/.test(nat);
+    case 'pt': return /^[239]\d{8}$/.test(nat);
+    case 'tr': return /^[2-5]\d{9}$/.test(nat);                      // 10-digit national
+    case 'br': return /^[1-9]\d{9,10}$/.test(nat);                   // 10-11 digits
+    case 'mx': return /^[1-9]\d{9}$/.test(nat);                      // 10 digits
+    case 'za': return /^[1-8]\d{8}$/.test(nat);                      // 9 digits
+    case 'ng': return /^[7-9]\d{9}$/.test(nat);
+    case 'ke': return /^[17]\d{8}$/.test(nat);
+    case 'ma': return /^[5-7]\d{8}$/.test(nat);
+    case 'sg': return /^[3689]\d{7}$/.test(nat);                     // 8 digits
+    case 'my': return /^[1-9]\d{7,9}$/.test(nat);
+    case 'id': return /^[2-9]\d{7,11}$/.test(nat);
+    case 'th': return /^[2-9]\d{7,8}$/.test(nat);
+    case 'ph': return /^[2-9]\d{8,9}$/.test(nat);
+    default: return nat.length >= 8 && nat.length <= 13;
   }
 }
 
@@ -335,6 +360,17 @@ function verifyHandle(handle, businessName) {
   return false;
 }
 
+// Optional OpenAI token accounting (a no-op unless COST_TRACK is set). Lets a
+// test harness total token usage from the SDK's own `usage` field without
+// intercepting the transport (the SDK doesn't use globalThis.fetch).
+function trackCost(resp) {
+  if (!process.env.COST_TRACK || !resp || !resp.usage) return;
+  const g = (global.__cost = global.__cost || { i: 0, o: 0, n: 0 });
+  g.i += resp.usage.prompt_tokens || 0;
+  g.o += resp.usage.completion_tokens || 0;
+  g.n += 1;
+}
+
 // ── Country → Google `gl` code (worldwide, not Saudi-only) ────────────────────
 
 const COUNTRY_GL = {
@@ -368,5 +404,5 @@ module.exports = {
   extractPhones, isStrongPhone, bestPhone, pickPhone, normalizePhone, extractEmail, cleanSearchName,
   isValidPhone, isTollFreeNumber, toNational,
   parseCount, parseFollowers, parsePosts,
-  isInfluencerHandle, verifyHandle, getCountryCode,
+  isInfluencerHandle, verifyHandle, getCountryCode, trackCost,
 };

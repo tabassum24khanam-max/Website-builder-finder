@@ -12,7 +12,7 @@
 
 const {
   serper, withTimeout, haversineKm, normalizeForMatch, cleanUrl, isSocialOrDirectory,
-  bestPhone, pickPhone, normalizePhone, parseFollowers, verifyHandle, getCountryCode, cleanSearchName,
+  bestPhone, pickPhone, normalizePhone, parseFollowers, verifyHandle, getCountryCode, cleanSearchName, trackCost,
 } = require('./util');
 const { geocodeBest } = require('./osm');
 
@@ -70,6 +70,7 @@ Example for cafes in Ibn Khaldun, Riyadh, Saudi Arabia:
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 200,
     });
+    trackCost(resp);
     const text = (resp.choices[0]?.message?.content || '').trim();
     const match = text.match(/\[[\s\S]*?\]/);
     if (match) {
@@ -91,11 +92,14 @@ Example for cafes in Ibn Khaldun, Riyadh, Saudi Arabia:
 // became null, the distance filter was disabled, and results came from all over
 // the city. Serper hits Google, which works from server IPs, so this is the
 // reliable fallback. We average the top places' coords for a stable area center.
-async function serperGeocode(query, gl, apiKey, log) {
+// NOTE: /places returns NOTHING for a bare place name ("Gràcia, Barcelona") — it
+// needs a business-type query — so we anchor with the category (or "cafe"); the
+// returned venues sit inside the requested area, so their centroid ≈ the center.
+async function serperGeocode(query, gl, apiKey, log, anchor = 'cafe') {
   if (!query) return null;
   try {
-    const data = await serper('/places', { q: query, gl, hl: 'en' }, apiKey, 8000);
-    const pts = (data.places || []).filter(p => p.latitude && p.longitude).slice(0, 5);
+    const data = await serper('/places', { q: `${anchor} ${query}`, gl, hl: 'en' }, apiKey, 8000);
+    const pts = (data.places || []).filter(p => p.latitude && p.longitude).slice(0, 8);
     if (!pts.length) return null;
     const lat = pts.reduce((s, p) => s + p.latitude, 0) / pts.length;
     const lng = pts.reduce((s, p) => s + p.longitude, 0) / pts.length;
@@ -130,12 +134,24 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
       if (!resolvedArea) resolvedArea = a.neighbourhood || a.suburb || a.city_district || a.quarter || a.residential || '';
       log(`📍 Search center: ${geo.lat.toFixed(4)},${geo.lng.toFixed(4)} — ${(geo.display || '').slice(0, 55)} [${precision}]`);
     } else {
-      // Nominatim failed (commonly throttled on cloud IPs) — geocode via Google.
-      const gq = [neighborhood, zip, city, country].filter(Boolean).join(', ');
-      const sgeo = await withTimeout(serperGeocode(gq, gl, apiKey, log), 8000, null);
+      // Nominatim failed (commonly throttled on cloud IPs) — geocode via Google,
+      // trying progressively coarser queries so we almost always land at least a
+      // city-level center (without one, the distance filter is disabled and
+      // results leak in from other areas).
+      const gq = [
+        [neighborhood, zip, city, country].filter(Boolean).join(', '),
+        [neighborhood, city, country].filter(Boolean).join(', '),
+        [zip, city, country].filter(Boolean).join(', '),
+        [city, country].filter(Boolean).join(', '),
+      ].filter((v, i, a) => v && a.indexOf(v) === i);
+      let sgeo = null, usedFirst = false;
+      for (let i = 0; i < gq.length; i++) {
+        sgeo = await withTimeout(serperGeocode(gq[i], gl, apiKey, log, category), 8000, null);
+        if (sgeo) { usedFirst = i === 0; break; }
+      }
       if (sgeo) {
         center = sgeo;
-        precision = (zip || neighborhood) ? 'precise' : 'city';
+        precision = (zip || neighborhood) && usedFirst ? 'precise' : 'city';
         log(`📍 Search center (Google): ${sgeo.lat.toFixed(4)},${sgeo.lng.toFixed(4)} [${precision}]`);
       } else {
         log('⚠️  Could not geocode the location — relying on text query only.', 'warn');

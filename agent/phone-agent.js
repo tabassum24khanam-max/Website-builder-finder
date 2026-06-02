@@ -21,7 +21,7 @@ const { OpenAI } = require('openai');
 const {
   serper, httpGet, withTimeout,
   bestPhone, pickPhone, isStrongPhone, isValidPhone,
-  getCountryCode, cleanSearchName,
+  getCountryCode, cleanSearchName, trackCost,
 } = require('./util');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000, maxRetries: 0 });
@@ -148,6 +148,7 @@ After your research, output ONLY the phone number you saw, or NOT_FOUND. No othe
       break;
     }
 
+    trackCost(resp);
     const msg = resp.choices[0].message;
     messages.push(msg);
 
