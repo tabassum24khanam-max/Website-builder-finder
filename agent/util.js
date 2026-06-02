@@ -163,11 +163,15 @@ function bestPhone(text) { return extractPhones(text).find(isStrongPhone) || nul
 // snippet usually appears once. Score = summed source weight, with a penalty
 // for toll-free/hotline numbers and a small bonus for mobiles, so a direct
 // mobile beats a generic 800/920 call-centre line (the exact ON Cafe bug).
-function pickPhone(candidates) {
+// When `cc` (a Google `gl` country code) is given, candidates that don't fit
+// that country's number shape are dropped — this rejects commercial-registration
+// / VAT / Maroof IDs that happen to be 10 digits (the Steam Roastery bug).
+function pickPhone(candidates, cc) {
   const groups = new Map(); // last-9-digits → { raw, score, digits }
   for (const c of candidates) {
     const raw = c && c.raw;
     if (!isStrongPhone(raw)) continue;
+    if (cc && !isValidPhone(raw, cc)) continue; // country-shape gate
     const norm = normalizePhone(raw);
     if (!norm) continue;
     const digits = norm.replace(/\D/g, '');
@@ -180,12 +184,64 @@ function pickPhone(candidates) {
   let best = null;
   for (const g of groups.values()) {
     let s = g.score;
-    const nat = g.digits.slice(-10); // national-ish tail
-    if (/^(800|920|8200|9200|1800)/.test(nat) || /^0?(800|920)/.test(g.digits)) s -= 2; // toll-free/hotline
-    if (/5\d{8}$/.test(g.digits)) s += 1; // GCC/Saudi mobile shape (harmless elsewhere)
+    if (isTollFreeNumber(g.raw, cc)) s -= 2;          // toll-free/hotline penalty
+    if (/5\d{8}$/.test(g.digits)) s += 1;             // GCC/Saudi mobile shape (harmless elsewhere)
     if (!best || s > best.s) best = { s, raw: g.raw };
   }
   return best ? best.raw : null;
+}
+
+// ── Country-aware phone shape validation ─────────────────────────────────────
+// gl country code → international dialing prefix, so we can strip it and inspect
+// the national significant number.
+const DIAL = {
+  sa: '966', ae: '971', eg: '20', kw: '965', bh: '973', qa: '974', om: '968', jo: '962', lb: '961',
+  gb: '44', us: '1', ca: '1', au: '61', nz: '64',
+  fr: '33', de: '49', es: '34', it: '39', pt: '351', nl: '31', be: '32', ch: '41', at: '43', ie: '353',
+  se: '46', no: '47', dk: '45', fi: '358', pl: '48', gr: '30', tr: '90',
+  in: '91', pk: '92', bd: '880', lk: '94', np: '977',
+  sg: '65', my: '60', id: '62', th: '66', ph: '63', za: '27', ng: '234', ke: '254', ma: '212',
+};
+
+// Reduce any written form (+CC, 00CC, national 0-trunk, spaces/dashes) to the
+// bare national significant number for the given country.
+function toNational(raw, cc) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  const dial = DIAL[cc];
+  if (dial && d.startsWith(dial) && d.length - dial.length >= 6) d = d.slice(dial.length);
+  return d.replace(/^0+/, '');
+}
+
+// Does this look like a REAL phone for the given country? Permissive for
+// unknown countries; strict enough for our test markets to reject IDs/CR/VAT
+// numbers that slip past the generic digit-count check.
+function isValidPhone(raw, cc) {
+  if (!isStrongPhone(raw)) return false;
+  const nat = toNational(raw, cc);
+  if (!nat || /^(\d)\1+$/.test(nat)) return false; // empty or all-identical digits
+  switch (cc) {
+    case 'sa': return (nat.length === 9 && /^[1-9]/.test(nat)) || /^800\d{6,7}$/.test(nat);
+    case 'ae': return nat.length >= 8 && nat.length <= 9 && /^[1-9]/.test(nat);
+    case 'us': case 'ca': return /^[2-9]\d{2}[2-9]\d{6}$/.test(nat); // NANP: area 2-9, exchange 2-9
+    case 'gb': return /^[1-9]\d{8,9}$/.test(nat);
+    case 'fr': return /^[1-9]\d{8}$/.test(nat);
+    case 'de': return /^[1-9]\d{5,11}$/.test(nat);
+    case 'in': return /^[1-9]\d{7,10}$/.test(nat);
+    default: return nat.length >= 7 && nat.length <= 13;
+  }
+}
+
+// Toll-free / unified call-centre lines (worth a number, but a direct line is
+// better — used both to penalise in pickPhone and to trigger the phone agent).
+function isTollFreeNumber(raw, cc) {
+  const nat = toNational(raw, cc);
+  if (!nat) return false;
+  if (cc === 'sa') return /^(800|9200|92[05])/.test(nat);
+  if (cc === 'us' || cc === 'ca') return /^8(00|33|44|55|66|77|88)/.test(nat);
+  if (cc === 'gb') return /^(80|500|808)/.test(nat);
+  return /^(1?800|0?800)/.test(nat);
 }
 
 // For search queries, prefer the latin core of a (possibly bilingual) name:
@@ -306,6 +362,7 @@ module.exports = {
   UA, withTimeout, delay, haversineKm, httpGet, serper,
   normalizeForMatch, cleanUrl, isSocialOrDirectory,
   extractPhones, isStrongPhone, bestPhone, pickPhone, normalizePhone, extractEmail, cleanSearchName,
+  isValidPhone, isTollFreeNumber, toNational,
   parseCount, parseFollowers, parsePosts,
   isInfluencerHandle, verifyHandle, getCountryCode,
 };

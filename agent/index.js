@@ -19,7 +19,7 @@ const { findLinkedIn } = require('./linkedin');
 const { findEmail } = require('./email');
 const { scoreLead } = require('./scorer');
 const { findPhone: phoneAgentFind } = require('./phone-agent');
-const { withTimeout, delay } = require('./util');
+const { withTimeout, delay, getCountryCode, isTollFreeNumber } = require('./util');
 const { q } = require('../db');
 const { v4: uuid } = require('uuid');
 
@@ -132,7 +132,7 @@ async function processBusiness(biz, { location, country, category, no_website_on
   // Step 2b — agentic phone hunt: run when enrichment found no phone, or only a
   // toll-free/hotline number. The agent searches Google, opens Instagram bios,
   // delivery apps, etc. — just like a human would.
-  const isTollFree = biz.phone && /^0?(800|920|8200|9200|1800)/.test(biz.phone.replace(/\D/g, ''));
+  const isTollFree = biz.phone && isTollFreeNumber(biz.phone, getCountryCode(country));
   if (!biz.phone || isTollFree) {
     log('📞 Running phone agent…');
     const found = await withTimeout(

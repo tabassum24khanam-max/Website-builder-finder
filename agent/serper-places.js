@@ -21,7 +21,7 @@ const CHAIN_DENYLIST = [
   'starbucks', 'mcdonald', 'kfc', 'subway', 'burger king', 'pizza hut', 'domino',
   'costa coffee', 'tim horton', 'dunkin', 'baskin', 'shake shack', 'five guys',
   'nando', 'hardee', 'al baik', 'albaik', 'herfy', 'kudu', 'dr. cafe', 'dr cafe',
-  'barns', 'the coffee bean', 'caribou coffee', 'pinkberry', 'papa john',
+  'barns', 'the coffee bean', 'caribou coffee', 'pinkberry', 'papa john', 'drcafe', 'half million',
   'little caesar', 'popeyes', 'taco bell', 'wendys', "wendy's", 'applebee',
   'ihop', 'denny', 'dairy queen', 'cold stone', 'krispy kreme', 'cinnabon',
   'gym nation', 'body masters', 'fitness time', 'anytime fitness', "gold's gym",
@@ -295,7 +295,7 @@ async function enrichBusiness(business, location, country, log) {
       const um = link.match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/i);
       if (um && !IG_RESERVED.has(um[1].toLowerCase())) { h = um[1]; u = `https://www.instagram.com/${um[1]}/`; }
       if (!h) { const tm = snippet.match(/\(@([A-Za-z0-9._]{2,30})\)/); if (tm) { h = tm[1]; u = `https://www.instagram.com/${tm[1]}/`; } }
-      if (h && verifyHandle(h, business.name)) {
+      if (h && verifyHandle(h, business.name) && !isChain(h)) {
         business.instagramHint = { handle: h, url: u, followers: parseFollowers(snippet), bio: snippet.slice(0, 300) };
         const bioPhone = bestPhone(snippet);
         if (bioPhone) phoneCandidates.push({ raw: bioPhone, weight: 2 }); // IG bio number is reliable
@@ -315,7 +315,7 @@ async function enrichBusiness(business, location, country, log) {
     }
   }
 
-  const consensus = pickPhone(phoneCandidates);
+  const consensus = pickPhone(phoneCandidates, getCountryCode(country));
   if (consensus) business.phone = consensus;
 
   if (business.website) log(`🌐 Website: ${business.website}`);

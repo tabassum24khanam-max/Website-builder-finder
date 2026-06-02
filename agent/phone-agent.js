@@ -20,7 +20,7 @@
 const { OpenAI } = require('openai');
 const {
   serper, httpGet, withTimeout,
-  bestPhone, pickPhone, isStrongPhone,
+  bestPhone, pickPhone, isStrongPhone, isValidPhone,
   getCountryCode, cleanSearchName,
 } = require('./util');
 
@@ -119,10 +119,18 @@ Research order (stop as soon as you find a real direct number):
 4. Their website contact/about page (if website known)
 5. Any relevant directory listing
 
-After your research steps, output ONLY the phone number (e.g. "+966 55 322 2224") or "NOT_FOUND". No other text.`;
+CRITICAL RULES:
+- Output ONLY a phone number that LITERALLY APPEARED in a search result or on a page you opened. Copy its exact digits.
+- NEVER invent, guess, complete, or reformat a number from memory, and NEVER output an example number.
+- If after your research you did not actually see a phone number for THIS business, output exactly: NOT_FOUND.
+- Make sure the number belongs to "${name}", not to a different nearby business.
 
+After your research, output ONLY the phone number you saw, or NOT_FOUND. No other text.`;
+
+  const cc = getCountryCode(country);
   const messages = [{ role: 'user', content: prompt }];
   const candidates = [];
+  let seenDigits = ''; // concatenated digits of everything the agent actually read
 
   for (let step = 0; step < 6; step++) {
     let resp;
@@ -147,9 +155,16 @@ After your research steps, output ONLY the phone number (e.g. "+966 55 322 2224"
       const text = (msg.content || '').trim();
       if (text && text !== 'NOT_FOUND') {
         const ph = bestPhone(text);
-        if (ph) {
+        // Anti-hallucination: only trust the final answer if it's a valid shape
+        // AND its digits actually appeared in something the agent read. This
+        // kills both the prompt-example echo and reformatted-from-memory numbers.
+        const tail = ph ? ph.replace(/\D/g, '').slice(-7) : '';
+        const corroborated = tail && seenDigits.includes(tail);
+        if (ph && isValidPhone(ph, cc) && corroborated) {
           log(`📞 Phone agent answer: ${ph}`);
           candidates.push({ raw: ph, weight: 5 });
+        } else if (ph) {
+          log(`📞 Discarding uncorroborated answer "${ph}" (not found in any source).`, 'warn');
         }
       }
       break;
@@ -164,17 +179,20 @@ After your research steps, output ONLY the phone number (e.g. "+966 55 322 2224"
           runTool(tc.function.name, args, serperKey, country),
           9000, 'Tool timed out.'
         );
-        // harvest phone candidates from tool output
+        // Remember the digits we actually read, to corroborate the final answer.
+        seenDigits += (result || '').replace(/\D/g, '');
+        // harvest phone candidates from tool output (country-shape validated, so
+        // CR/VAT/ID numbers on a page don't masquerade as a phone)
         const phones = (result || '').match(/\+?\d[\d\s().\-]{6,18}\d/g) || [];
         for (const p of phones) {
-          if (isStrongPhone(p)) candidates.push({ raw: p, weight: 1 });
+          if (isValidPhone(p, cc)) candidates.push({ raw: p, weight: 1 });
         }
       } catch (e) { result = `Error: ${e.message}`; }
       messages.push({ role: 'tool', tool_call_id: tc.id, content: (result || '').slice(0, 4000) });
     }
   }
 
-  return pickPhone(candidates) || null;
+  return pickPhone(candidates, cc) || null;
 }
 
 module.exports = { findPhone };
