@@ -352,11 +352,15 @@ function verifyHandle(handle, businessName) {
 
   const n = normalizeForMatch(businessName);
   const h = low.replace(/[._]/g, '');
-  if (!n || n.length < 3) return true; // nothing to verify against — accept
+  // No verifiable Latin core (too short, or a non-Latin/Arabic-only name) — we
+  // cannot confirm the handle by name, so reject. A wrong handle (the @drcafeksa
+  // / @jadeel.sa case) is worse than none; callers can match non-Latin names by a
+  // distinctive name token appearing in the result snippet instead.
+  if (!n || n.length < 4) return false;
 
-  const k = Math.min(5, n.length);
+  const k = Math.min(6, n.length);
   if (h.includes(n.slice(0, k))) return true;                          // handle contains name core
-  if (n.includes(h.slice(0, Math.min(5, h.length)))) return true;      // name contains handle core
+  if (n.includes(h.slice(0, Math.min(6, h.length)))) return true;      // name contains handle core
   return false;
 }
 

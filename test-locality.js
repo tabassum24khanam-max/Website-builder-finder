@@ -3,6 +3,7 @@
 require('dotenv').config();
 const { findBusinessesSerper, enrichBusiness } = require('./agent/serper-places');
 const { findPhone } = require('./agent/phone-agent');
+const { findInstagram } = require('./agent/instagram');
 const { haversineKm } = require('./agent/util');
 
 const CFG = {
@@ -13,10 +14,12 @@ const CFG = {
   country: process.env.T_COUNTRY || 'Saudi Arabia',
   radius_km: parseFloat(process.env.T_RADIUS || '3'),
   limit: parseInt(process.env.T_LIMIT || '10', 10),
+  lat: process.env.T_LAT ? parseFloat(process.env.T_LAT) : null,
+  lng: process.env.T_LNG ? parseFloat(process.env.T_LNG) : null,
 };
 
 const log = (m, lvl) => console.log(`   ${lvl === 'warn' ? '⚠️ ' : lvl === 'error' ? '❌' : '· '} ${m}`);
-let CENTER = null;
+let CENTER = (CFG.lat && CFG.lng) ? { lat: CFG.lat, lng: CFG.lng } : null;
 // Wrap so we can capture the resolved center from the log line.
 const origLog = log;
 
@@ -36,7 +39,8 @@ const origLog = log;
   try {
     businesses = await findBusinessesSerper({
       category: CFG.category, city: CFG.city, neighborhood: CFG.neighborhood,
-      zip: CFG.zip, country: CFG.country, radiusKm: CFG.radius_km, limit: CFG.limit, log: captureLog,
+      zip: CFG.zip, country: CFG.country, radiusKm: CFG.radius_km, limit: CFG.limit,
+      lat: CFG.lat, lng: CFG.lng, log: captureLog,
     });
   } catch (e) { console.log('DISCOVERY ERROR:', e.message); process.exit(1); }
 
@@ -53,12 +57,17 @@ const origLog = log;
 
     let phoneSource = phoneFromPlaces ? 'places' : (phoneAfterEnrich ? 'enrich' : null);
 
-    // Phone-agent fallback when no phone (or toll-free), exactly like the app.
+    // Instagram FIRST (mirrors the app) — resolve the handle before the phone hunt.
+    const ig = await findInstagram({ name: biz.name, city: CFG.city, country: CFG.country, websiteUrl: biz.website, hint: biz.instagramHint }, log).catch(() => ({ handle: null }));
+    if (ig.handle) biz.instagramHint = { ...(biz.instagramHint || {}), handle: ig.handle };
+
+    // Phone-agent fallback when no phone (or toll-free), now armed with the handle.
     const isTollFree = biz.phone && /^0?(800|920|8200|9200|1800)/.test(biz.phone.replace(/\D/g, ''));
     if (!biz.phone || isTollFree) {
-      const found = await findPhone({ name: biz.name, city: CFG.city, country: CFG.country, website: biz.website, instagramHandle: biz.instagramHint?.handle }, log).catch(() => null);
+      const found = await findPhone({ name: biz.name, city: CFG.city, country: CFG.country, website: biz.website, instagramHandle: ig.handle || biz.instagramHint?.handle }, log).catch(() => null);
       if (found) { biz.phone = found; phoneSource = 'phone-agent'; }
     }
+    if (!biz.phone && ig.phoneFromBio) { biz.phone = ig.phoneFromBio; phoneSource = 'ig-bio'; }
 
     const dist = (CENTER && biz.lat && biz.lng) ? haversineKm(CENTER.lat, CENTER.lng, biz.lat, biz.lng) : null;
     rows.push({

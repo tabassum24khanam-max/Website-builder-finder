@@ -71,28 +71,54 @@ async function findInstagram({ name, city, country, websiteUrl, hint }, log) {
 
 const IG_RESERVED = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'about', 'help', 'legal', 'press', 'api', 'blog', 'developers', 'privacy', 'safety', 'support', 'directory', 'challenge', 'popular', 'web', 'emails', 'session']);
 
+// Generic words that don't identify a specific business (so they can't be used
+// to confirm a handle for a non-Latin / short name).
+const IG_STOPWORDS = new Set([
+  'coffee', 'cafe', 'cafes', 'café', 'roastery', 'roasters', 'roaster', 'specialty',
+  'speciality', 'espresso', 'tea', 'restaurant', 'shop', 'bar', 'house', 'the', 'and',
+  'co', 'company', 'riyadh', 'jeddah', 'saudi', 'arabia', 'sa',
+  'قهوة', 'مقهى', 'كافيه', 'كوفي', 'مختصة', 'مختص', 'محمصة', 'شاي', 'مطعم', 'الرياض', 'جدة', 'السعودية', 'حي', 'روست',
+]);
+
+// Distinctive (brand-identifying) tokens of a name: drops generic words; keeps
+// Arabic tokens ≥3 chars and Latin tokens ≥4 chars.
+function distinctiveTokens(name) {
+  return (name || '').split(/[\s|/()،,.\-]+/).map(w => w.trim()).filter(w => {
+    if (!w || IG_STOPWORDS.has(w.toLowerCase())) return false;
+    return /[^\x00-\x7F]/.test(w) ? w.length >= 3 : w.length >= 4;
+  });
+}
+function nameTokenInText(name, text) {
+  if (!text) return false;
+  return distinctiveTokens(name).some(w => text.includes(w));
+}
+
 async function searchInstagram(name, city, country, log) {
   const loc = [city, country].filter(Boolean).join(' ');
+  // A NATURAL query ("Name City instagram") returns the actual profile; a
+  // `site:instagram.com` query returns nothing via Serper/Google (verified).
   const data = await serper('/search', {
-    q: `${cleanSearchName(name)} ${loc} site:instagram.com`,
+    q: `${cleanSearchName(name) || name} ${loc} instagram`,
     gl: getCountryCode(country), hl: 'en', num: 10,
   }, process.env.SERPER_API_KEY, 10000);
 
   for (const r of (data.organic || [])) {
     const snippet = `${r.title || ''} ${r.snippet || ''}`;
 
-    // Extract from URL path first
+    // Handle from the profile URL first, else the "Name (@handle) • Instagram" form.
     const um = (r.link || '').match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/i);
     let handle = (um && !IG_RESERVED.has(um[1].toLowerCase())) ? um[1] : null;
-
-    // Fall back to handle in title/snippet: "Name (@handle) • Instagram"
-    // This is the primary pattern when Google indexes reels rather than profiles
     if (!handle) {
       const tm = snippet.match(/\(@([A-Za-z0-9._]{2,30})\)/);
       if (tm) handle = tm[1];
     }
+    if (!handle || IG_RESERVED.has(handle.toLowerCase())) continue;
 
-    if (!handle || !verifyHandle(handle, name)) continue;
+    // Accept on a verified Latin name-core match (≥4-char core), OR — for
+    // non-Latin/Arabic names that can't be core-matched — when a distinctive
+    // (brand, non-generic) token of the name appears in the result text. This
+    // recovers اريكة/شاي وريد while rejecting هدج→@jadeel.sa and ARA→@arabica.
+    if (!verifyHandle(handle, name) && !nameTokenInText(name, snippet)) continue;
     log(`📸 Verified Instagram: @${handle}`);
     return {
       handle,

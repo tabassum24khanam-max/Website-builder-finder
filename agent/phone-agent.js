@@ -113,8 +113,9 @@ Instagram: ${instagramHandle ? `@${instagramHandle} — open https://www.instagr
 Goal: find a DIRECT mobile or local landline. Avoid 800/920 call-center numbers unless that's all you can find.
 
 Research order (stop as soon as you find a real direct number):
-1. Google search: "${sn} ${city} phone" — check the knowledge graph phone and top results
-2. Their Instagram bio (open the profile URL above if known)
+1. Instagram bio — THE most likely place for a small cafe/shop's WhatsApp/phone.
+   ${instagramHandle ? `Open https://www.instagram.com/${instagramHandle}/ and read the bio.` : `First search "${sn} ${city} instagram", then open the profile and read the bio.`}
+2. Google search: "${sn} ${city} phone" — check the knowledge graph phone and top results
 3. Delivery apps: try searching "${sn} talabat" or "${sn} jahez" or "${sn} hungerstation"
 4. Their website contact/about page (if website known)
 5. Any relevant directory listing

@@ -129,14 +129,23 @@ async function processBusiness(biz, { location, country, category, no_website_on
   await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
   if (shouldStop()) return null;
 
-  // Step 2b — agentic phone hunt: run when enrichment found no phone, or only a
-  // toll-free/hotline number. The agent searches Google, opens Instagram bios,
-  // delivery apps, etc. — just like a human would.
+  // Step 2b — Instagram FIRST. For small local businesses (especially in the
+  // Gulf) the WhatsApp/phone lives in the Instagram bio, so we resolve the handle
+  // BEFORE the phone hunt and hand it over — otherwise the phone agent searches
+  // blind and misses the bio number (the ABSLT / شاي وريد case).
+  const ig = await withTimeout(
+    findInstagram({ name: biz.name, city: location, country, websiteUrl: biz.website, hint: biz.instagramHint }, log),
+    14000, { handle: null });
+  if (ig.handle) log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
+  if (shouldStop()) return null;
+
+  // Step 2c — agentic phone hunt, now armed with the IG handle so it can open the
+  // bio. Runs when enrichment found no phone, or only a toll-free/hotline number.
   const isTollFree = biz.phone && isTollFreeNumber(biz.phone, getCountryCode(country));
   if (!biz.phone || isTollFree) {
     log('📞 Running phone agent…');
     const found = await withTimeout(
-      phoneAgentFind({ name: biz.name, city: location, country, website: biz.website, instagramHandle: biz.instagramHint?.handle }, log),
+      phoneAgentFind({ name: biz.name, city: location, country, website: biz.website, instagramHandle: ig.handle || biz.instagramHint?.handle }, log),
       45000, null
     );
     if (found) { biz.phone = found; log(`📞 Agent found: ${found}`); }
@@ -164,13 +173,6 @@ async function processBusiness(biz, { location, country, category, no_website_on
   if (biz.website && !['none', 'social_only', 'linktree'].includes(websiteStatus)) {
     ownerPhone = await withTimeout(findOwnerPhone(biz.website, log), 14000, null);
   }
-  if (shouldStop()) return null;
-
-  // Step 4 — Instagram (uses the hint from enrichment; targeted search only if needed)
-  const ig = await withTimeout(
-    findInstagram({ name: biz.name, city: location, country, websiteUrl: biz.website, hint: biz.instagramHint }, log),
-    14000, { handle: null });
-  if (ig.handle) log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
   if (shouldStop()) return null;
 
   // Step 5 — LinkedIn (verified match only; usually empty for small businesses)
