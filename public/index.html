@@ -2370,7 +2370,10 @@ async function useCurrentLocation() {
 // movable. Because it's a cross-origin iframe we can't read taps/pan position,
 // so the search location comes from the typed fields (or an autocomplete / GPS
 // pick), not from clicking the map.
-const pickerState = { lat: null, lng: null, zoom: 13 };
+// `exact` = coords came from an autocomplete/GPS pick (drop a pin on them);
+// otherwise coords are a background geocode of the typed text used only to
+// center the SEARCH while the embed still shows Google's own text geocoding.
+const pickerState = { lat: null, lng: null, zoom: 13, exact: false };
 
 function pickerQueryText() {
   const v = id => (document.getElementById(id)?.value || '').trim();
@@ -2382,16 +2385,31 @@ function updatePickerStatus(text) {
   if (el) el.textContent = text;
 }
 
-// Build the embed URL — precise coords if we have them (from autocomplete/GPS),
-// otherwise the typed location text (Google geocodes it for us).
+// Build the embed URL — an exact pin (autocomplete/GPS) centers on coords;
+// otherwise the typed location text (Google geocodes it for the visual).
 function pickerEmbedSrc() {
   const z = pickerState.zoom || 13;
-  if (pickerState.lat != null && pickerState.lng != null) {
+  if (pickerState.exact && pickerState.lat != null && pickerState.lng != null) {
     return `https://www.google.com/maps?q=${pickerState.lat},${pickerState.lng}&z=${z}&hl=en&output=embed`;
   }
   const q = pickerQueryText();
   if (!q) return '';
   return `https://www.google.com/maps?q=${encodeURIComponent(q)}&z=${z}&hl=en&output=embed`;
+}
+
+// Geocode the typed location IN THE BROWSER (the user's IP isn't throttled like
+// the server's) and stash the coords as the SEARCH center. This is what makes
+// the search respect the locality even when the backend's geocoder is blocked.
+async function geocodeTypedLocation() {
+  const q = pickerQueryText();
+  if (!q) return;
+  try {
+    const data = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&accept-language=en`, { headers: { 'Accept-Language': 'en' } }).then(r => r.json());
+    if (data && data.length && !pickerState.exact) {
+      pickerState.lat = parseFloat(data[0].lat);
+      pickerState.lng = parseFloat(data[0].lon);
+    }
+  } catch {}
 }
 
 // (Re)load the embed for the current location. Reloading only when the src
@@ -2420,16 +2438,17 @@ function refreshPickerMap() {
 function setPickerLocation(lat, lng, label) {
   pickerState.lat = lat;
   pickerState.lng = lng;
+  pickerState.exact = true;
   refreshPickerMap();
   updatePickerStatus(label ? `📍 ${label} — drag the map to move around` : `📍 ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
 }
 
 function initPickerMap() {
   refreshPickerMap();
+  if (pickerQueryText()) geocodeTypedLocation();
 }
 
-// Typing updates the map. We clear any precise coords so the embed follows the
-// freshly typed text; the backend geocodes those fields to center the search.
+// Typing updates the map AND re-geocodes (in the browser) to recenter the search.
 let pickerRefreshTimer = null;
 ['location-input', 'country-input', 'zip-input', 'street-input'].forEach(elId => {
   const el = document.getElementById(elId);
@@ -2437,8 +2456,9 @@ let pickerRefreshTimer = null;
   el.addEventListener('input', () => {
     pickerState.lat = null;
     pickerState.lng = null;
+    pickerState.exact = false;
     clearTimeout(pickerRefreshTimer);
-    pickerRefreshTimer = setTimeout(refreshPickerMap, 600);
+    pickerRefreshTimer = setTimeout(() => { refreshPickerMap(); geocodeTypedLocation(); }, 600);
   });
 });
 

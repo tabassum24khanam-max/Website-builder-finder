@@ -85,6 +85,27 @@ Example for cafes in Ibn Khaldun, Riyadh, Saudi Arabia:
   return base;
 }
 
+// ── Geocode via Serper / Google ──────────────────────────────────────────────
+// The public Nominatim API blocks/throttles cloud-server IPs (e.g. Railway), so
+// backend geocoding silently returned nothing in production — the search center
+// became null, the distance filter was disabled, and results came from all over
+// the city. Serper hits Google, which works from server IPs, so this is the
+// reliable fallback. We average the top places' coords for a stable area center.
+async function serperGeocode(query, gl, apiKey, log) {
+  if (!query) return null;
+  try {
+    const data = await serper('/places', { q: query, gl, hl: 'en' }, apiKey, 8000);
+    const pts = (data.places || []).filter(p => p.latitude && p.longitude).slice(0, 5);
+    if (!pts.length) return null;
+    const lat = pts.reduce((s, p) => s + p.latitude, 0) / pts.length;
+    const lng = pts.reduce((s, p) => s + p.longitude, 0) / pts.length;
+    return { lat, lng };
+  } catch (e) {
+    if (log) log(`⚠️  Serper geocode failed: ${e.message}`, 'warn');
+    return null;
+  }
+}
+
 // ── Step 1: discover businesses ──────────────────────────────────────────────
 
 async function findBusinessesSerper({ category, city, neighborhood, zip, country, lat, lng, radiusKm = 10, limit = 20, log }) {
@@ -94,6 +115,7 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
 
   // ── Resolve a precise search center (the linchpin of locality) ──────────────
   let center = null, precision = 'city';
+  let resolvedArea = (neighborhood || '').trim(); // best human area label for the query
   if (lat && lng) {
     center = { lat, lng }; precision = 'precise';
     log(`📍 Using map pin: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
@@ -101,20 +123,31 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
     const geo = await withTimeout(geocodeBest({ neighborhood, city, zip, country }), 8000, null);
     if (geo) {
       center = { lat: geo.lat, lng: geo.lng }; precision = geo.precision;
+      const a = geo.address || {};
+      if (!city) city = a.city || a.town || a.state || city;
+      // Pull the actual district/neighbourhood name (e.g. a zip → "Al Rawdah")
+      // so the search queries target it, not the whole city.
+      if (!resolvedArea) resolvedArea = a.neighbourhood || a.suburb || a.city_district || a.quarter || a.residential || '';
       log(`📍 Search center: ${geo.lat.toFixed(4)},${geo.lng.toFixed(4)} — ${(geo.display || '').slice(0, 55)} [${precision}]`);
-      // If the city wasn't given, recover an English area name for clean queries.
-      if (!city && geo.address) {
-        city = geo.address.city || geo.address.town || geo.address.state || city;
-      }
     } else {
-      log('⚠️  Could not geocode the location — relying on text query only.', 'warn');
+      // Nominatim failed (commonly throttled on cloud IPs) — geocode via Google.
+      const gq = [neighborhood, zip, city, country].filter(Boolean).join(', ');
+      const sgeo = await withTimeout(serperGeocode(gq, gl, apiKey, log), 8000, null);
+      if (sgeo) {
+        center = sgeo;
+        precision = (zip || neighborhood) ? 'precise' : 'city';
+        log(`📍 Search center (Google): ${sgeo.lat.toFixed(4)},${sgeo.lng.toFixed(4)} [${precision}]`);
+      } else {
+        log('⚠️  Could not geocode the location — relying on text query only.', 'warn');
+      }
     }
   }
 
-  // Human-readable area for the query text. Prefer what the user typed; never a
-  // bare zip (that matches nationwide) — pair it with the resolved city.
+  // Human-readable area for the query text. Prefer the most specific label we
+  // have (typed/resolved district → zip+city → city). Never a bare zip alone.
   const areaText =
-    [neighborhood, city].filter(Boolean).join(', ') ||
+    [resolvedArea, city].filter(Boolean).join(', ') ||
+    (zip && city ? `${zip}, ${city}` : '') ||
     [city, country].filter(Boolean).join(', ') ||
     [zip, country].filter(Boolean).join(' ') ||
     country || 'this area';
