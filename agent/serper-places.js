@@ -320,11 +320,15 @@ async function enrichBusiness(business, location, country, log) {
 
     // Website — only accept a domain whose NAME matches the business (directory
     // pages mention the name in their snippet but are not the business's site).
+    // The exact-match clause catches short cores the length>=4 rule misses
+    // (e.g. "HAI" → hai.sa) without opening the door to loose 3-char matches.
     if (!business.website && link && !isSocialOrDirectory(link)) {
       try {
         const host = new URL(link).hostname.replace(/^www\./, '');
         const hostCore = host.replace(/\.[a-z.]+$/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-        if (nameCore && nameCore.length >= 4 && hostCore.includes(nameCore.slice(0, Math.min(6, nameCore.length)))) {
+        const looseMatch = nameCore.length >= 4 && hostCore.includes(nameCore.slice(0, Math.min(6, nameCore.length)));
+        const exactMatch = nameCore.length >= 3 && hostCore === nameCore;
+        if (nameCore && (looseMatch || exactMatch)) {
           business.website = cleanUrl(link);
         }
       } catch {}
