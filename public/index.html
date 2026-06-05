@@ -1570,6 +1570,20 @@ function showExportButtons(searchId) {
 // ============================================================
 //  LEAD CARDS (live panel)
 // ============================================================
+// Open the business on Google (web search for its name + locality) in a new tab.
+function leadLocation(lead) {
+  if (lead.city) return lead.city;
+  if (lead.location) return lead.location;
+  const s = state.allSearches.find(x => (x.id || x._id) === (lead.searchId || lead.search_id));
+  if (s && s.location) return s.location;
+  if (lead.address) return String(lead.address).split(',').pop().trim();
+  return '';
+}
+function googleSearchUrl(lead) {
+  const name = lead.businessName || lead.name || '';
+  return 'https://www.google.com/search?q=' + encodeURIComponent([name, leadLocation(lead)].filter(Boolean).join(' '));
+}
+
 function buildLeadCard(lead) {
   const id = lead.id || lead._id;
   const name = lead.businessName || lead.name || 'Unknown';
@@ -1592,6 +1606,7 @@ function buildLeadCard(lead) {
       ${phone ? `<div class="lead-card-row">📞 <span class="truncate">${escHtml(phone)}</span></div>` : ''}
       ${email ? `<div class="lead-card-row">✉️ <span class="truncate">${escHtml(email)}</span></div>` : ''}
       ${ig ? `<div class="lead-card-row">📸 <span class="truncate">@${escHtml(ig.replace('@',''))}</span></div>` : ''}
+      <div class="lead-card-row"><a href="${googleSearchUrl(lead)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--blue);text-decoration:none;">🔎 Open on Google</a></div>
     </div>
   `;
   return card;
@@ -1664,6 +1679,7 @@ function renderLeadsTable() {
       <td class="td-dim">${lead.linkedin ? `<a href="${escHtml(lead.linkedin)}" target="_blank" onclick="event.stopPropagation()" style="color:var(--blue)">Link</a>` : '–'}</td>
       <td>${statusChipHtml(status)}</td>
       <td><div class="td-actions" onclick="event.stopPropagation()">
+        <a class="btn btn-ghost btn-xs" href="${googleSearchUrl(lead)}" target="_blank" rel="noopener">🔎 Google</a>
         <button class="btn btn-ghost btn-xs" onclick="openLeadModal('${id}')">View</button>
         <button class="btn btn-red btn-xs" onclick="deleteLead('${id}')">✕</button>
       </div></td>
@@ -1750,6 +1766,10 @@ function openLeadModal(id) {
         <div class="detail-item">
           <div class="detail-label">Google Maps</div>
           <div class="detail-value">${lead.mapsUrl || lead.googleMapsUrl ? `<a href="${escHtml(lead.mapsUrl||lead.googleMapsUrl)}" target="_blank">📍 Open Maps</a>` : '–'}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">Search on Google</div>
+          <div class="detail-value"><a href="${googleSearchUrl(lead)}" target="_blank" rel="noopener">🔎 Open on Google</a></div>
         </div>
         <div class="detail-item">
           <div class="detail-label">Website</div>
