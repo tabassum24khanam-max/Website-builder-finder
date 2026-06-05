@@ -83,8 +83,8 @@ app.post('/api/searches', (req, res) => {
   if (!category || !cleanLocation) {
     return res.status(400).json({ error: 'category and a location (city, zip, or neighborhood) are required' });
   }
-  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'sk-paste-your-key-here') {
-    return res.status(400).json({ error: 'OpenAI API key not configured. Check your .env file.' });
+  if (!process.env.SERPER_API_KEY) {
+    return res.status(400).json({ error: 'Search API key (SERPER_API_KEY) not configured. Check your environment variables.' });
   }
 
   const searchId = uuid();

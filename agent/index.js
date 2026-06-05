@@ -13,11 +13,7 @@
 const { findBusinessesSerper, enrichBusiness } = require('./serper-places');
 const { findBusinessesPlaces } = require('./places-api');
 const { findBusinessesOSM } = require('./osm');
-const { analyzeWebsite, findOwnerPhone } = require('./website');
 const { findInstagram } = require('./instagram');
-const { findLinkedIn } = require('./linkedin');
-const { findEmail } = require('./email');
-const { scoreLead } = require('./scorer');
 const { findPhone: phoneAgentFind } = require('./phone-agent');
 const { withTimeout, delay, getCountryCode, isTollFreeNumber } = require('./util');
 const { q } = require('../db');
@@ -124,107 +120,69 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
 
 // ── Per-business pipeline ────────────────────────────────────────────────────
 
-async function processBusiness(biz, { location, country, category, no_website_only }, log, shouldStop) {
-  // Step 2 — enrich (website / phone / address / IG) via one /search
+// Lean per-business pipeline — only what the goal needs (phone, Instagram,
+// location, website yes/no). No AI website grading, AI scoring, LinkedIn, or
+// paid email lookups. Costs ~1-2 Serper calls/business + the phone fallback
+// only when a number is still missing.
+async function processBusiness(biz, { location, country, no_website_only }, log, shouldStop) {
+  // 1 — enrich (one /search): website domain, phone, Instagram hint, address.
   await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
   if (shouldStop()) return null;
 
-  // Step 2b — Instagram FIRST. For small local businesses (especially in the
-  // Gulf) the WhatsApp/phone lives in the Instagram bio, so we resolve the handle
-  // BEFORE the phone hunt and hand it over — otherwise the phone agent searches
-  // blind and misses the bio number (the ABSLT / شاي وريد case).
+  // 2 — Instagram first: the handle + bio is where small local businesses keep
+  //     their WhatsApp/phone, so resolve it before any phone hunt.
   const ig = await withTimeout(
     findInstagram({ name: biz.name, city: location, country, websiteUrl: biz.website, hint: biz.instagramHint }, log),
     14000, { handle: null });
   if (ig.handle) log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
+  if (!biz.phone && ig.phoneFromBio) biz.phone = ig.phoneFromBio;
   if (shouldStop()) return null;
 
-  // Step 2c — agentic phone hunt, now armed with the IG handle so it can open the
-  // bio. Runs when enrichment found no phone, or only a toll-free/hotline number.
+  // 3 — phone: enrichment + the IG bio already cover most. Only spend the extra
+  //     lookup when there's still no number, or just a toll-free/hotline one.
   const isTollFree = biz.phone && isTollFreeNumber(biz.phone, getCountryCode(country));
   if (!biz.phone || isTollFree) {
-    log('📞 Running phone agent…');
+    log('📞 Looking for a direct number…');
     const found = await withTimeout(
       phoneAgentFind({ name: biz.name, city: location, country, website: biz.website, instagramHandle: ig.handle || biz.instagramHint?.handle }, log),
-      45000, null
-    );
-    if (found) { biz.phone = found; log(`📞 Agent found: ${found}`); }
+      40000, null);
+    if (found) { biz.phone = found; log(`📞 Found: ${found}`); }
   }
+  const phone = biz.phone || ig.phoneFromBio || null;
   if (shouldStop()) return null;
 
-  // Step 3 — website classification
-  let websiteStatus = 'none', websiteSummary = '';
-  if (biz.website) {
-    const ws = await withTimeout(analyzeWebsite(biz.website, biz.name, log), 24000, { status: 'basic', summary: 'Analysis timed out.' });
-    websiteStatus = ws.status; websiteSummary = ws.summary;
-    log(`🌐 Website: ${websiteStatus} — ${websiteSummary}`);
-  } else {
-    log('🚫 No website found');
-  }
-  // Filter: only a genuinely GOOD site disqualifies a lead. A weak presence
-  // (none/social/linktree/menu/outdated/basic) is exactly who we want.
-  if (no_website_only && websiteStatus === 'good') {
-    return { skip: true, reason: `has a good website (${biz.website})` };
-  }
-  if (shouldStop()) return null;
-
-  // Step 3b — owner/manager phone from the website contact page
-  let ownerPhone = null;
-  if (biz.website && !['none', 'social_only', 'linktree'].includes(websiteStatus)) {
-    ownerPhone = await withTimeout(findOwnerPhone(biz.website, log), 14000, null);
-  }
-  if (shouldStop()) return null;
-
-  // Step 5 — LinkedIn (verified match only; usually empty for small businesses)
-  const li = await withTimeout(findLinkedIn({ name: biz.name, city: location, country }, log), 16000, { companyUrl: null });
-  if (shouldStop()) return null;
-
-  // Step 6 — Email
-  log('📬 Looking for email...');
-  const email = await withTimeout(
-    findEmail({ name: biz.name, city: location, country, website: biz.website, instagramBio: ig.bio }, log),
-    14000, null) || ig.emailFromBio || null;
-
-  // Phone cascade: business phone → IG bio phone → website contact phone
-  const phone = biz.phone || ig.phoneFromBio || ownerPhone || null;
-  if (shouldStop()) return null;
-
-  // Step 7 — Score
-  log('🤖 Scoring lead...');
-  const score = await withTimeout(scoreLead({
-    name: biz.name, category: biz.category, searchedCategory: biz.searchedCategory || category, city: location, country, address: biz.address,
-    phone, website: biz.website, websiteStatus, rating: biz.rating, reviewCount: biz.reviewCount,
-    instagramHandle: ig.handle, instagramFollowers: ig.followers,
-    linkedinCompanyUrl: li.companyUrl, ownerName: li.ownerName, email,
-  }), 24000, { isIndependent: true, categoryMatch: true, aiScore: biz.website ? 4 : 6, marketingScore: ig.handle ? 5 : 2, aiReasoning: 'Scored without AI (timeout).', outreachMessage: null });
-
-  // Drop chains/franchises flagged by the AI (catches brands not on the denylist).
-  if (score.isIndependent === false) {
-    return { skip: true, reason: 'AI flagged it as a chain/franchise (not independent)' };
+  // 4 — website: a real own-domain found during enrichment means they already
+  //     have a site (no extra fetch / no AI). That's the only disqualifier.
+  const hasWebsite = !!biz.website;
+  log(hasWebsite ? `🌐 Has a website: ${biz.website}` : '🚫 No website found');
+  if (no_website_only && hasWebsite) {
+    return { skip: true, reason: `already has a website (${biz.website})` };
   }
 
-  // Drop businesses that aren't actually the searched category (e.g. a burger
-  // joint surfacing in a "cafes" search).
-  if (score.categoryMatch === false) {
-    return { skip: true, reason: `not a ${biz.searchedCategory || category} (AI category mismatch)` };
+  // 5 — email straight from the IG bio (free); 6 — must be reachable somehow.
+  const email = ig.emailFromBio || null;
+  if (!(phone || email || ig.handle || biz.website)) {
+    return { skip: true, reason: 'no contact info found' };
   }
 
-  // Drop leads we cannot contact at all — a lead with no contact is worthless.
-  if (!(phone || email || ig.handle || li.companyUrl || biz.website || ownerPhone)) {
-    return { skip: true, reason: 'no contact info found anywhere' };
-  }
+  // 7 — simple, free score: no website + reachable = hottest lead.
+  const aiScore = hasWebsite ? 4 : (phone ? 9 : (ig.handle ? 7 : 6));
+  const marketingScore = ig.handle ? (ig.followers && ig.followers > 5000 ? 7 : 5) : 2;
+  const bits = [hasWebsite ? 'Already has a website' : 'No website — prime candidate to build one'];
+  if (phone) bits.push('reachable by phone');
+  if (ig.handle) bits.push(`on Instagram${ig.followers ? ` (${ig.followers.toLocaleString()} followers)` : ''}`);
 
   return {
     name: biz.name, category: biz.category, address: biz.address, phone,
-    website: biz.website, websiteStatus, websiteSummary,
+    website: biz.website, websiteStatus: hasWebsite ? 'good' : 'none',
+    websiteSummary: hasWebsite ? 'Has a website.' : 'No website found.',
     rating: biz.rating, reviewCount: biz.reviewCount,
     instagramHandle: ig.handle, instagramFollowers: ig.followers, instagramPosts: ig.posts,
     instagramPostsPerMonth: ig.postsPerMonth, instagramLastPost: ig.lastPost,
     instagramBio: ig.bio, instagramUrl: ig.url,
-    linkedinCompanyUrl: li.companyUrl, ownerName: li.ownerName, ownerLinkedinUrl: li.ownerUrl,
-    email, ownerPhone,
-    aiScore: score.aiScore, marketingScore: score.marketingScore,
-    aiReasoning: score.aiReasoning, outreachMessage: score.outreachMessage,
+    linkedinCompanyUrl: null, ownerName: null, ownerLinkedinUrl: null,
+    email, ownerPhone: null,
+    aiScore, marketingScore, aiReasoning: bits.join('; '), outreachMessage: null,
     mapsUrl: biz.mapsUrl, lat: biz.lat, lng: biz.lng, photoUrl: biz.photoUrl || null,
   };
 }
