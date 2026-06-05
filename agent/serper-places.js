@@ -188,7 +188,7 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
   for (const q of queries) {
     if (candidates.length >= hardCap) break;
     const baseBody = { q, location: locationLabel, gl, hl: 'en' };
-    if (center) baseBody.ll = `@${center.lat},${center.lng},14z`;
+    if (center) baseBody.ll = `@${center.lat},${center.lng},12z`;
 
     for (let page = 1; page <= 4; page++) {
       if (candidates.length >= hardCap) break;
@@ -209,16 +209,13 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
         if (seen.has(key)) continue;
         seen.set(key, true);
 
-        // HARD locality filter — this is what keeps other cities out.
-        let dist = null;
-        if (center && p.latitude && p.longitude) {
-          dist = haversineKm(center.lat, center.lng, p.latitude, p.longitude);
-          if (dist > filterKm) continue;
-        }
         if (isChain(name)) { log(`⏭️  Chain/listing skipped: ${name}`); continue; }
 
+        // Collect everything (with coords). The locality filter is applied ONCE
+        // at the end, against a centre we trust — so a wrong geocode can never
+        // pre-drop the real local results.
         candidates.push({
-          dist: dist == null ? 9999 : dist,
+          dist: 9999,
           biz: {
             name,
             category: p.category || category,
@@ -242,15 +239,47 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
     }
   }
 
-  if (!candidates.length) {
-    log('⚠️  No local results after distance filtering.');
-    return [];
+  if (!candidates.length) { log('⚠️  No results found.'); return []; }
+
+  // ── Pick a TRUSTED centre, then HARD-filter to it ────────────────────────────
+  // Google localises the text query ("cafe in <area>, <city>, <country>") well,
+  // so the MEDIAN coordinate of the results is the true centre of the locality.
+  // We trust a map pin first; then a geocode ONLY if it agrees with that median
+  // (within 25km) — otherwise the geocode was wrong (e.g. "Al Rawdah" matched a
+  // village 60km away) and we use the median. This is the guarantee that results
+  // come from the locality, not from elsewhere.
+  const lats = candidates.map(c => c.biz.lat).filter(v => typeof v === 'number').sort((a, b) => a - b);
+  const lngs = candidates.map(c => c.biz.lng).filter(v => typeof v === 'number').sort((a, b) => a - b);
+  const median = (lats.length && lngs.length)
+    ? { lat: lats[Math.floor(lats.length / 2)], lng: lngs[Math.floor(lngs.length / 2)] } : null;
+
+  let finalCenter = null, how = 'median';
+  if (lat && lng) { finalCenter = { lat, lng }; how = 'map pin'; }
+  else if (center && median && haversineKm(center.lat, center.lng, median.lat, median.lng) <= 25) { finalCenter = center; how = 'geocode'; }
+  else if (median) { finalCenter = median; how = center ? 'results (geocode looked wrong)' : 'results'; }
+  else if (center) { finalCenter = center; how = 'geocode'; }
+
+  // Filter radius: tight when we targeted a sub-area (pin / zip / neighbourhood),
+  // wider for a whole-city search. Never Infinity now that we always have a centre.
+  const targetedArea = !!(lat && lng) || !!zip || !!(neighborhood || resolvedArea);
+  const filterRadius = targetedArea ? Math.max((radiusKm || 5) * 1.3, 3) : 30;
+
+  let kept = candidates;
+  if (finalCenter) {
+    kept = candidates.filter((c) => {
+      if (typeof c.biz.lat !== 'number' || typeof c.biz.lng !== 'number') return false;
+      c.dist = haversineKm(finalCenter.lat, finalCenter.lng, c.biz.lat, c.biz.lng);
+      return c.dist <= filterRadius;
+    });
+    log(`📍 Locality centre: ${finalCenter.lat.toFixed(4)},${finalCenter.lng.toFixed(4)} [${how}] — keeping results ≤${Math.round(filterRadius)}km`);
   }
 
+  if (!kept.length) { log('⚠️  No results inside the locality.'); return []; }
+
   // Closest first = most relevant to the searched locality.
-  candidates.sort((a, b) => a.dist - b.dist);
-  const businesses = candidates.slice(0, hardCap).map(c => c.biz);
-  log(`✅ ${businesses.length} local candidates within range (closest first)`);
+  kept.sort((a, b) => a.dist - b.dist);
+  const businesses = kept.slice(0, hardCap).map(c => c.biz);
+  log(`✅ ${businesses.length} results within the locality (closest first)`);
   return businesses;
 }
 
