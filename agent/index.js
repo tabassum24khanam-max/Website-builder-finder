@@ -15,6 +15,7 @@ const { findBusinessesPlaces } = require('./places-api');
 const { findBusinessesOSM } = require('./osm');
 const { findInstagram } = require('./instagram');
 const { findPhone: phoneAgentFind } = require('./phone-agent');
+const { aiEnrich } = require('./ai-enrich');
 const { withTimeout, delay, getCountryCode, isTollFreeNumber } = require('./util');
 const { q } = require('../db');
 const { v4: uuid } = require('uuid');
@@ -29,7 +30,7 @@ function stopSearch(searchId) {
 }
 
 async function runSearch(searchConfig, broadcast) {
-  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only, neighborhood, zip, city } = searchConfig;
+  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only, neighborhood, zip, city, aiMode } = searchConfig;
   const cityLabel = city || location; // display/enrichment city
   const targetCount = limit_count || 20;
 
@@ -59,7 +60,7 @@ async function runSearch(searchConfig, broadcast) {
       broadcast({ type: 'agent_step', searchId, step: 'analyzing', businessName: biz.name });
 
       // Overall hard cap per business — if anything drags, we move on.
-      const lead = await withTimeout(processBusiness(biz, { location: cityLabel, country, category, no_website_only }, log, shouldStop), BUSINESS_BUDGET_MS, null);
+      const lead = await withTimeout(processBusiness(biz, { location: cityLabel, country, category, no_website_only, aiMode }, log, shouldStop), aiMode ? 100000 : BUSINESS_BUDGET_MS, null);
 
       if (!lead) { log(`⏭️  Skipped ${biz.name} (timed out or no data)`, 'warn'); continue; }
       if (lead.skip) { log(`⏭️  Skipping ${biz.name} — ${lead.reason}`, 'info'); continue; }
@@ -126,42 +127,59 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
 // location, website yes/no). No AI website grading, AI scoring, LinkedIn, or
 // paid email lookups. Costs ~1-2 Serper calls/business + the phone fallback
 // only when a number is still missing.
-async function processBusiness(biz, { location, country, no_website_only }, log, shouldStop) {
-  // 1 — enrich. Google Places already gave the authoritative phone/website/
-  //     address, so only Serper-discovered businesses need the extra /search.
-  if (!biz.fromPlaces) {
-    await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
+async function processBusiness(biz, { location, country, no_website_only, aiMode }, log, shouldStop) {
+  let ig = { handle: null, followers: null, posts: null, postsPerMonth: null, lastPost: null, bio: null, phoneFromBio: null, emailFromBio: null, url: null };
+
+  if (aiMode && !biz.fromPlaces) {
+    // ── AI MODE: a human-like research agent finds phone + Instagram + website by
+    //    searching Google and READING pages (the business site, delivery apps,
+    //    directories). Slower and uses more AI, but more thorough than one query.
+    log('🤖 AI deep research (phone · Instagram · website)…');
+    const r = await withTimeout(
+      aiEnrich({ name: biz.name, city: location, country, website: biz.website, instagramHandle: biz.instagramHint?.handle }, log),
+      50000, null);
+    if (r) {
+      if (r.phone) biz.phone = r.phone;
+      if (r.website && !biz.website) biz.website = r.website;
+      if (r.instagram) { ig.handle = r.instagram; ig.url = `https://www.instagram.com/${r.instagram}/`; }
+    }
+    if (ig.handle) log(`📸 @${ig.handle}`);
+    if (biz.phone) log(`📞 ${biz.phone}`);
+  } else {
+    // ── SERPER MODE (default) ──────────────────────────────────────────────────
+    // 1 — enrich (Places-discovered businesses already have authoritative data).
+    if (!biz.fromPlaces) {
+      await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
+    }
+    if (shouldStop()) return null;
+
+    // 2 — Instagram first (the bio is where small businesses keep their phone).
+    ig = await withTimeout(
+      findInstagram({ name: biz.name, city: location, country, websiteUrl: biz.website, hint: biz.instagramHint }, log),
+      14000, ig);
+    if (ig.handle) log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
+    if (!biz.phone && ig.phoneFromBio) biz.phone = ig.phoneFromBio;
+    if (shouldStop()) return null;
+
+    // 2b — backfill: a second name+city query catches website/phone the first missed.
+    if (!biz.fromPlaces && (!biz.website || !biz.phone)) {
+      await withTimeout(backfillWebsitePhone(biz, location, country, log), 10000, biz);
+    }
+    if (shouldStop()) return null;
+
+    // 3 — phone fallback only when still missing or toll-free.
+    const isTollFree = biz.phone && isTollFreeNumber(biz.phone, getCountryCode(country));
+    if (!biz.phone || isTollFree) {
+      log('📞 Looking for a direct number…');
+      const found = await withTimeout(
+        phoneAgentFind({ name: biz.name, city: location, country, website: biz.website, instagramHandle: ig.handle || biz.instagramHint?.handle }, log),
+        40000, null);
+      if (found) { biz.phone = found; log(`📞 Found: ${found}`); }
+    }
   }
   if (shouldStop()) return null;
 
-  // 2 — Instagram first: the handle + bio is where small local businesses keep
-  //     their WhatsApp/phone, so resolve it before any phone hunt.
-  const ig = await withTimeout(
-    findInstagram({ name: biz.name, city: location, country, websiteUrl: biz.website, hint: biz.instagramHint }, log),
-    14000, { handle: null });
-  if (ig.handle) log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
-  if (!biz.phone && ig.phoneFromBio) biz.phone = ig.phoneFromBio;
-  if (shouldStop()) return null;
-
-  // 2b — backfill: Serper's organic is a variable sample, so a second name+city
-  //     query catches a website/phone the first enrichment missed (free path only).
-  if (!biz.fromPlaces && (!biz.website || !biz.phone)) {
-    await withTimeout(backfillWebsitePhone(biz, location, country, log), 10000, biz);
-  }
-  if (shouldStop()) return null;
-
-  // 3 — phone: enrichment + the IG bio already cover most. Only spend the extra
-  //     lookup when there's still no number, or just a toll-free/hotline one.
-  const isTollFree = biz.phone && isTollFreeNumber(biz.phone, getCountryCode(country));
-  if (!biz.phone || isTollFree) {
-    log('📞 Looking for a direct number…');
-    const found = await withTimeout(
-      phoneAgentFind({ name: biz.name, city: location, country, website: biz.website, instagramHandle: ig.handle || biz.instagramHint?.handle }, log),
-      40000, null);
-    if (found) { biz.phone = found; log(`📞 Found: ${found}`); }
-  }
   const phone = biz.phone || ig.phoneFromBio || null;
-  if (shouldStop()) return null;
 
   // 4 — website: a real own-domain found during enrichment means they already
   //     have a site (no extra fetch / no AI). That's the only disqualifier.

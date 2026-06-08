@@ -1015,6 +1015,13 @@
               <span>Only businesses without a website</span>
             </label>
           </div>
+          <div class="form-group">
+            <label class="form-label">Search engine</label>
+            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;" title="When ON, an AI agent researches each business like a human (opens its site, Instagram, delivery & directory pages) instead of a single Serper query. Slower and uses more AI, but more thorough.">
+              <input type="checkbox" id="ai-mode" style="accent-color:var(--amber);width:16px;height:16px;cursor:pointer;">
+              <span>🤖 AI deep search <span style="color:var(--text-dim)">(slower, more thorough)</span></span>
+            </label>
+          </div>
         </div>
 
         <button class="btn btn-amber start-btn" id="start-btn" onclick="startSearch()">
@@ -1390,6 +1397,7 @@ async function startSearch() {
   const radius_km = parseInt(document.getElementById('radius-select').value) || 5;
   const count = parseInt(document.getElementById('count-select').value);
   const noWebsiteOnly = document.getElementById('no-website-only').checked;
+  const aiMode = document.getElementById('ai-mode')?.checked || false;
 
   if (!category) { showToast('warn', '⚠️', 'Please select or enter a category.'); return; }
   if (!location && !zip) { showToast('warn', '⚠️', 'Please enter a city or zip code.'); return; }
@@ -1400,6 +1408,7 @@ async function startSearch() {
     lat: pickerState.lat || null,
     lng: pickerState.lng || null,
     no_website_only: noWebsiteOnly,
+    ai_mode: aiMode,
   };
 
   document.getElementById('start-btn').disabled = true;
