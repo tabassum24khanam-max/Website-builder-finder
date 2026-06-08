@@ -2,6 +2,7 @@
 // One API call returns name, phone, address, website, coords, photo — no scraping
 
 const https = require('https');
+const { haversineKm } = require('./util');
 
 const PLACES_BASE = 'https://places.googleapis.com/v1';
 
@@ -30,108 +31,107 @@ function isChain(name) {
   return false;
 }
 
-async function findBusinessesPlaces({ category, location, country, lat, lng, radius_km = 5, limit = 20, log }) {
+async function findBusinessesPlaces({ category, location, city, neighborhood, zip, country, lat, lng, radius_km = 5, limit = 20, log }) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) throw new Error('GOOGLE_PLACES_API_KEY not set in environment');
 
-  const fullLocation = `${location}${country ? ', ' + country : ''}`;
-  log(`🔍 Google Places: "${category}" near ${fullLocation}...`);
+  const cityLabel = city || location || '';
+  const areaText = [neighborhood, cityLabel].filter(Boolean).join(', ') || cityLabel;
+  const fullArea = `${areaText}${country ? ', ' + country : ''}`;
+  log(`🔍 Google Places: "${category}" in ${fullArea}...`);
 
-  // Resolve coordinates if not provided
+  // Center: a map pin if given, else a Google geocode of the area (reliable).
   let centerLat = lat, centerLng = lng;
   if (!centerLat || !centerLng) {
-    const coords = await geocodeCity(location, country, apiKey);
+    const coords = await geocodeCity(areaText, country, apiKey);
     centerLat = coords.latitude;
     centerLng = coords.longitude;
-    log(`📍 Geocoded to ${centerLat.toFixed(4)}, ${centerLng.toFixed(4)}`);
+    log(`📍 Center: ${centerLat.toFixed(4)}, ${centerLng.toFixed(4)}`);
   }
-
-  const requestBody = {
-    textQuery: `local independent ${category} in ${fullLocation}`,
-    maxResultCount: Math.min(limit * 2, 20),
-    languageCode: 'en',
-    locationBias: {
-      circle: {
-        center: { latitude: centerLat, longitude: centerLng },
-        radius: (radius_km || 5) * 1000,
-      },
-    },
-  };
 
   const fieldMask = [
-    'places.id',
-    'places.displayName',
-    'places.formattedAddress',
-    'places.nationalPhoneNumber',
-    'places.internationalPhoneNumber',
-    'places.websiteUri',
-    'places.rating',
-    'places.userRatingCount',
-    'places.location',
-    'places.photos',
-    'places.types',
-    'places.businessStatus',
+    'places.id', 'places.displayName', 'places.formattedAddress',
+    'places.nationalPhoneNumber', 'places.internationalPhoneNumber', 'places.websiteUri',
+    'places.rating', 'places.userRatingCount', 'places.location',
+    'places.types', 'places.businessStatus', 'nextPageToken',
   ].join(',');
 
-  let data;
-  try {
-    data = await postJson(`${PLACES_BASE}/places:searchText`, requestBody, {
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': fieldMask,
-    });
-  } catch (e) {
-    throw new Error(`Google Places API error: ${e.message}`);
+  // Fetch up to 3 pages (≈60 candidates) so we still hit the requested count
+  // after chain + locality filtering.
+  const rawPlaces = [];
+  let pageToken = null;
+  for (let page = 0; page < 2; page++) { // 2 pages (≈40 candidates) — keeps cost down
+    const requestBody = {
+      textQuery: `${category} in ${fullArea}`,
+      maxResultCount: 20,
+      languageCode: 'en',
+      locationBias: {
+        circle: {
+          center: { latitude: centerLat, longitude: centerLng },
+          radius: Math.min((radius_km || 5) * 1000, 50000),
+        },
+      },
+    };
+    if (pageToken) requestBody.pageToken = pageToken;
+    let data;
+    try {
+      data = await postJson(`${PLACES_BASE}/places:searchText`, requestBody, {
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': fieldMask,
+      });
+    } catch (e) {
+      if (page === 0) throw new Error(`Google Places API error: ${e.message}`);
+      break;
+    }
+    for (const p of (data.places || [])) rawPlaces.push(p);
+    pageToken = data.nextPageToken || null;
+    if (!pageToken || rawPlaces.length >= limit * 3) break;
   }
 
-  if (!data.places || !data.places.length) {
+  if (!rawPlaces.length) {
     log('⚠️  Google Places returned no results');
     return [];
   }
 
-  log(`📋 Places found ${data.places.length} businesses — filtering chains...`);
+  // HARD locality filter — same guarantee as the Serper path: tight when a
+  // sub-area was targeted (pin / zip / neighbourhood), wider for a whole city.
+  const targeted = !!(lat && lng) || !!zip || !!neighborhood;
+  const filterKm = targeted ? Math.max((radius_km || 5) * 1.3, 3) : 30;
 
-  const filtered = [];
-  for (const place of data.places) {
+  const out = [];
+  for (const place of rawPlaces) {
     const name = place.displayName?.text || place.displayName || '';
     if (!name) continue;
     if (place.businessStatus === 'CLOSED_PERMANENTLY') continue;
-    if (isChain(name)) {
-      log(`⏭️  Chain skipped: ${name}`);
-      continue;
+    if (isChain(name)) { log(`⏭️  Chain skipped: ${name}`); continue; }
+    const plat = place.location?.latitude, plng = place.location?.longitude;
+    if (typeof plat === 'number' && typeof plng === 'number') {
+      if (haversineKm(centerLat, centerLng, plat, plng) > filterKm) continue;
     }
-    filtered.push({ place, name });
-    if (filtered.length >= limit) break;
-  }
-
-  log(`✅ ${filtered.length} local independent businesses`);
-
-  // Fetch photo CDN URLs concurrently (non-blocking on failure)
-  const results = await Promise.all(filtered.map(async ({ place, name }) => {
-    let photoUrl = null;
-    if (place.photos && place.photos[0]) {
-      try {
-        photoUrl = await fetchPhotoUrl(place.photos[0].name, apiKey);
-      } catch (_) {}
-    }
-
-    return {
+    out.push({
       name,
       category,
+      searchedCategory: category,
       address: place.formattedAddress || null,
+      // Authoritative — straight from Google Maps (the number/site you see in the app).
       phone: place.nationalPhoneNumber || place.internationalPhoneNumber || null,
       website: place.websiteUri || null,
       rating: place.rating || null,
       reviewCount: place.userRatingCount || 0,
-      lat: place.location?.latitude || null,
-      lng: place.location?.longitude || null,
-      photoUrl,
+      lat: plat || null,
+      lng: plng || null,
+      photoUrl: null,
+      instagramHint: null,
+      fromPlaces: true, // tells the pipeline the phone/website are already authoritative
       mapsUrl: place.id
         ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${place.id}`
-        : null,
-    };
-  }));
+        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + fullArea)}`,
+    });
+    if (out.length >= limit * 3) break;
+  }
 
-  return results;
+  log(`✅ ${out.length} businesses within the locality (Google Places — phone & website included)`);
+  return out;
 }
 
 async function geocodeCity(location, country, apiKey) {
