@@ -16,6 +16,7 @@ const { findBusinessesOSM } = require('./osm');
 const { findInstagram } = require('./instagram');
 const { findPhone: phoneAgentFind } = require('./phone-agent');
 const { aiEnrich } = require('./ai-enrich');
+const { findTikTok } = require('./tiktok');
 const { withTimeout, delay, getCountryCode, isTollFreeNumber } = require('./util');
 const { q } = require('../db');
 const { v4: uuid } = require('uuid');
@@ -129,6 +130,7 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
 // only when a number is still missing.
 async function processBusiness(biz, { location, country, no_website_only, aiMode }, log, shouldStop) {
   let ig = { handle: null, followers: null, posts: null, postsPerMonth: null, lastPost: null, bio: null, phoneFromBio: null, emailFromBio: null, url: null };
+  let tiktok = { handle: null, url: null };
 
   if (aiMode && !biz.fromPlaces) {
     // ── AI MODE: a human-like research agent finds phone + Instagram + website by
@@ -142,8 +144,10 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
       if (r.phone) biz.phone = r.phone;
       if (r.website && !biz.website) biz.website = r.website;
       if (r.instagram) { ig.handle = r.instagram; ig.url = `https://www.instagram.com/${r.instagram}/`; }
+      if (r.tiktok) { tiktok = { handle: r.tiktok, url: `https://www.tiktok.com/@${r.tiktok}` }; }
     }
     if (ig.handle) log(`📸 @${ig.handle}`);
+    if (tiktok.handle) log(`🎵 @${tiktok.handle}`);
     if (biz.phone) log(`📞 ${biz.phone}`);
   } else {
     // ── SERPER MODE (default) ──────────────────────────────────────────────────
@@ -159,6 +163,10 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
       14000, ig);
     if (ig.handle) log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
     if (!biz.phone && ig.phoneFromBio) biz.phone = ig.phoneFromBio;
+    if (shouldStop()) return null;
+
+    // 2a — TikTok handle (a quick targeted search, strictly name-verified).
+    tiktok = await withTimeout(findTikTok({ name: biz.name, city: location, country }, log), 10000, tiktok);
     if (shouldStop()) return null;
 
     // 2b — backfill: a second name+city query catches website/phone the first missed.
@@ -191,16 +199,17 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
 
   // 5 — email straight from the IG bio (free); 6 — must be reachable somehow.
   const email = ig.emailFromBio || null;
-  if (!(phone || email || ig.handle || biz.website)) {
+  if (!(phone || email || ig.handle || tiktok.handle || biz.website)) {
     return { skip: true, reason: 'no contact info found' };
   }
 
   // 7 — simple, free score: no website + reachable = hottest lead.
-  const aiScore = hasWebsite ? 4 : (phone ? 9 : (ig.handle ? 7 : 6));
-  const marketingScore = ig.handle ? (ig.followers && ig.followers > 5000 ? 7 : 5) : 2;
+  const aiScore = hasWebsite ? 4 : (phone ? 9 : (ig.handle || tiktok.handle ? 7 : 6));
+  const marketingScore = (ig.handle ? (ig.followers && ig.followers > 5000 ? 6 : 4) : 0) + (tiktok.handle ? 3 : 0) || 2;
   const bits = [hasWebsite ? 'Already has a website' : 'No website — prime candidate to build one'];
   if (phone) bits.push('reachable by phone');
   if (ig.handle) bits.push(`on Instagram${ig.followers ? ` (${ig.followers.toLocaleString()} followers)` : ''}`);
+  if (tiktok.handle) bits.push('on TikTok');
 
   return {
     name: biz.name, category: biz.category, address: biz.address, phone,
@@ -210,6 +219,7 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
     instagramHandle: ig.handle, instagramFollowers: ig.followers, instagramPosts: ig.posts,
     instagramPostsPerMonth: ig.postsPerMonth, instagramLastPost: ig.lastPost,
     instagramBio: ig.bio, instagramUrl: ig.url,
+    tiktokHandle: tiktok.handle, tiktokUrl: tiktok.url,
     linkedinCompanyUrl: null, ownerName: null, ownerLinkedinUrl: null,
     email, ownerPhone: null,
     aiScore, marketingScore, aiReasoning: bits.join('; '), outreachMessage: null,
@@ -226,7 +236,9 @@ function toRow(id, searchId, city, category, lead) {
     instagram_handle: lead.instagramHandle || null, instagram_followers: lead.instagramFollowers || null,
     instagram_posts: lead.instagramPosts || null, instagram_posts_per_month: lead.instagramPostsPerMonth || null,
     instagram_last_post: lead.instagramLastPost || null, instagram_bio: lead.instagramBio || null,
-    instagram_url: lead.instagramUrl || null, linkedin_company_url: lead.linkedinCompanyUrl || null,
+    instagram_url: lead.instagramUrl || null,
+    tiktok_handle: lead.tiktokHandle || null, tiktok_url: lead.tiktokUrl || null,
+    linkedin_company_url: lead.linkedinCompanyUrl || null,
     linkedin_owner_name: lead.ownerName || null, linkedin_owner_url: lead.ownerLinkedinUrl || null,
     email: lead.email || null, owner_email: null, owner_phone: lead.ownerPhone || null,
     ai_score: lead.aiScore || 0, marketing_score: lead.marketingScore || 0,
