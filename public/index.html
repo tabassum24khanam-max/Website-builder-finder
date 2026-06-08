@@ -974,6 +974,16 @@
           </div>
         </div>
 
+        <!-- Paste a location: Google Maps link, Plus Code, or lat,lng -->
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">📍 Or paste a location <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(Google Maps link, Plus Code, or lat,lng — the search starts there)</span></label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="location-link" autocomplete="off" placeholder="e.g. https://maps.app.goo.gl/…  ·  PQF5+HX3 Riyadh  ·  24.7239,46.7599" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();resolvePastedLocation();}">
+            <button class="btn btn-amber" type="button" onclick="resolvePastedLocation()" style="white-space:nowrap;">Use this 📍</button>
+          </div>
+          <div id="location-link-status" style="font-size:12px;color:var(--text-dim);margin-top:6px;"></div>
+        </div>
+
         <!-- Map picker — keyless Google Maps embed (interactive: drag to move) -->
         <div class="form-group" style="margin-bottom:16px;">
           <label class="form-label">Search Area <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(updates as you type — drag the map to move around)</span></label>
@@ -1387,6 +1397,26 @@ document.getElementById('custom-category').addEventListener('input', () => {
 // ============================================================
 //  SEARCH
 // ============================================================
+// Resolve a pasted Google Maps link / Plus Code / lat,lng → drop the search pin there.
+async function resolvePastedLocation() {
+  const q = (document.getElementById('location-link').value || '').trim();
+  const statusEl = document.getElementById('location-link-status');
+  if (!q) return;
+  const city = (document.getElementById('location-input').value || '').trim();
+  const country = (document.getElementById('country-input').value || '').trim();
+  if (statusEl) statusEl.textContent = '⏳ Reading location…';
+  try {
+    const res = await apiFetch(`/api/resolve-location?q=${encodeURIComponent(q)}&city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}`);
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || 'Could not read that.');
+    const r = await res.json();
+    if (typeof setPickerLocation === 'function') setPickerLocation(r.lat, r.lng, r.label);
+    if (statusEl) statusEl.innerHTML = `✅ Set to <strong>${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}</strong> (${escHtml(r.label)}) — the search will start here.`;
+    if (typeof showToast === 'function') showToast('success', '📍', `Location set from ${r.label}.`);
+  } catch (e) {
+    if (statusEl) statusEl.textContent = '⚠️ ' + (e.message || 'Could not read that link or code.');
+  }
+}
+
 async function startSearch() {
   const customCat = document.getElementById('custom-category').value.trim();
   const category = customCat || state.selectedCategory;

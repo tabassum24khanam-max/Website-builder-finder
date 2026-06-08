@@ -45,6 +45,17 @@ app.get('/api/config', (req, res) => {
   res.json({ googleMapsKey: process.env.GOOGLE_MAPS_API_KEY || '' });
 });
 
+// Resolve a pasted Google Maps link / Plus Code / lat,lng / address → coordinates
+// the search starts from.
+app.get('/api/resolve-location', async (req, res) => {
+  try {
+    const { resolveLocation } = require('./agent/locate');
+    const r = await resolveLocation({ q: req.query.q, city: req.query.city, country: req.query.country });
+    if (!r) return res.status(404).json({ error: 'Could not read a location from that link or code.' });
+    res.json(r);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ─── Searches ────────────────────────────────────────────────────────────────
 
 app.get('/api/searches', (req, res) => {
