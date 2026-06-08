@@ -24,8 +24,13 @@ const {
   normalizeForMatch, cleanUrl, extractEmail, trackCost,
 } = require('./util');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000, maxRetries: 0 });
-const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30000, maxRetries: 0 });
+// AI mode uses a FRONTIER model for human-level judgment (deciding which number
+// truly belongs to the business, rejecting switchboards/wrong-region numbers,
+// confirming the right Instagram). It auto-falls-back to the cheap model if the
+// key can't access it.
+const AI_MODEL = process.env.AI_MODE_MODEL || 'gpt-4o';
+const AI_FALLBACK = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 const IG_RESERVED = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'about', 'help', 'popular', 'web']);
 
@@ -71,12 +76,12 @@ async function renderedGet(url) {
 
 async function runTool(toolName, args, serperKey, country, log) {
   if (toolName === 'search_google') {
-    const data = await withTimeout(serper('/search', { q: String(args.query || ''), gl: getCountryCode(country), hl: 'en', num: 6 }, serperKey, 8000), 8000, null);
+    const data = await withTimeout(serper('/search', { q: String(args.query || ''), gl: getCountryCode(country), hl: 'en', num: 10 }, serperKey, 8000), 8000, null);
     if (!data) return 'Search timed out.';
     let out = '';
     const kg = data.knowledgeGraph;
     if (kg) { out += `KNOWLEDGE PANEL: ${kg.title || ''}\n`; if (kg.phoneNumber) out += `Phone: ${kg.phoneNumber}\n`; if (kg.website) out += `Website: ${kg.website}\n`; if (kg.address) out += `Address: ${kg.address}\n`; out += '\n'; }
-    out += (data.organic || []).slice(0, 6).map((r, i) => `[${i + 1}] ${r.title}\n    ${r.link}\n    ${r.snippet || ''}`).join('\n\n');
+    out += (data.organic || []).slice(0, 10).map((r, i) => `[${i + 1}] ${r.title}\n    ${r.link}\n    ${r.snippet || ''}`).join('\n\n');
     return out || 'No results.';
   }
   if (toolName === 'open_page') {
@@ -127,32 +132,44 @@ async function aiEnrich({ name, city, country, website, instagramHandle }, log) 
   const store = { phones: [], ig: instagramHandle || null, site: website || null };
   let seenDigits = '';
 
-  const prompt = `You research a local business like a careful human, to find its CONTACT INFO.
+  const prompt = `You are an expert local-business researcher. Work to the standard of a meticulous human analyst and find the CONTACT INFO for ONE specific business.
 
 Business: "${name}"${sn !== name ? ` (search as "${sn}")` : ''}
 Location: ${loc}
 ${website ? `Known website: ${website}` : ''}${instagramHandle ? `\nKnown Instagram: @${instagramHandle}` : ''}
 
-Find: 1) a DIRECT phone, 2) the official Instagram @handle, 3) the business's own website.
-How: search Google, then OPEN the most promising page (its website/contact page, its Instagram profile, a Talabat/Jahez/HungerStation listing, or a directory) and READ it. Repeat until you have what's findable.
+Find three things, most important first:
+1) DIRECT PHONE — a mobile or local landline that belongs to THIS business at THIS location.
+2) Official INSTAGRAM @handle.
+3) The business's OWN website (its own domain — not a directory, menu, QR-link, or social page).
 
-Rules:
-- Only report a value you ACTUALLY SAW in a tool result. Never invent or guess.
-- Make sure the info belongs to THIS business in ${city}, not a different one.
+METHOD — do this like a careful human, not one quick search:
+- Search, then OPEN and READ the most authoritative page: the business's own site/contact page, then its Instagram profile, then a Talabat/Jahez/HungerStation listing, then a directory.
+- CROSS-CHECK every number. Trust it more if it appears on the business's OWN site/Instagram, or on 2+ independent sources that clearly refer to THIS business.
+- REJECT a number if it likely isn't theirs: a shared building/tower/mall switchboard, a DIFFERENT branch in another city, a different business that shares the name, or a generic call-centre (800 / 920 / 9200) when a direct line exists. Check the area code fits ${city}.
+- Confirm the Instagram is genuinely THIS business (name + city match in the bio/posts), not a same-named account elsewhere.
+- Only report a value you ACTUALLY SAW in a tool result. Never invent, complete, or recall a number from memory. If unsure, return null.
 
-When finished, reply with ONLY this JSON and nothing else:
+When finished, reply with ONLY this JSON (no prose):
 {"phone": "<number or null>", "instagram": "<@handle or null>", "website": "<url or null>"}`;
 
   const messages = [{ role: 'user', content: prompt }];
+  let model = AI_MODEL;
 
-  for (let step = 0; step < 7; step++) {
+  for (let step = 0; step < 8; step++) {
     let resp;
+    const callOpts = { messages, tools: TOOLS, tool_choice: step < 7 ? 'auto' : 'none', max_tokens: 350, temperature: 0.1 };
     try {
-      resp = await openai.chat.completions.create({
-        model: MODEL, messages, tools: TOOLS,
-        tool_choice: step < 6 ? 'auto' : 'none', max_tokens: 300, temperature: 0.1,
-      });
-    } catch (e) { if (log) log(`🤖 AI enrich step ${step} error: ${e.message}`); break; }
+      resp = await openai.chat.completions.create({ model, ...callOpts });
+    } catch (e) {
+      // Frontier model not accessible on this key → fall back to the cheap one.
+      if (model !== AI_FALLBACK && /model|not.?found|does not exist|no access|unsupported|permission|invalid/i.test(e.message || '')) {
+        if (log) log(`🤖 ${model} unavailable — using ${AI_FALLBACK}`);
+        model = AI_FALLBACK;
+        try { resp = await openai.chat.completions.create({ model, ...callOpts }); }
+        catch (e2) { if (log) log(`🤖 AI enrich error: ${e2.message}`); break; }
+      } else { if (log) log(`🤖 AI enrich step ${step} error: ${e.message}`); break; }
+    }
     trackCost(resp);
     const msg = resp.choices[0].message;
     messages.push(msg);
