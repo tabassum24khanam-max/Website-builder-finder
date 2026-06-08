@@ -374,4 +374,51 @@ async function enrichBusiness(business, location, country, log) {
   return business;
 }
 
-module.exports = { findBusinessesSerper, enrichBusiness, isChain };
+// ── Backfill: a SECOND /search for website/phone when enrichment came up empty ──
+// Serper's organic results are a variable sample — a business's own website or
+// phone shows up in some queries and not others. A second, name+city query is a
+// fresh sample that catches much of what the first missed (e.g. sevenbeans.co).
+// Detecting a real website here also correctly removes it from "no-website" runs.
+async function backfillWebsitePhone(business, city, country, log) {
+  if (business.website && business.phone) return business;
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) return business;
+  const cc = getCountryCode(country);
+  const nameCore = normalizeForMatch(business.name);
+  const q = [cleanSearchName(business.name) || business.name, city, country].filter(Boolean).join(' ');
+
+  let data;
+  try { data = await serper('/search', { q, gl: cc, hl: 'en', num: 9 }, apiKey, 9000); }
+  catch { return business; }
+  const kg = data.knowledgeGraph || {};
+  const organic = data.organic || [];
+
+  if (!business.website) {
+    if (kg.website && !isSocialOrDirectory(kg.website)) business.website = cleanUrl(kg.website);
+    for (const r of organic) {
+      if (business.website) break;
+      const link = r.link || '';
+      if (!link || isSocialOrDirectory(link)) continue;
+      try {
+        const host = new URL(link).hostname.replace(/^www\./, '');
+        const hostCore = host.replace(/\.[a-z.]+$/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+        const core = nameCore.slice(0, Math.min(6, nameCore.length));
+        if (nameCore.length >= 4 && (hostCore.includes(core) || nameCore.includes(hostCore.slice(0, Math.min(6, hostCore.length))))) {
+          business.website = cleanUrl(link);
+        }
+      } catch {}
+    }
+    if (business.website) log(`🌐 Website (backfill): ${business.website}`);
+  }
+
+  if (!business.phone) {
+    const cands = [];
+    if (kg.phoneNumber) cands.push({ raw: kg.phoneNumber, weight: 4 });
+    for (const r of organic) { const ph = bestPhone(`${r.title || ''} ${r.snippet || ''}`); if (ph) cands.push({ raw: ph, weight: 1 }); }
+    const pick = pickPhone(cands, cc);
+    if (pick) { business.phone = pick; log(`📞 Phone (backfill): ${pick}`); }
+  }
+  return business;
+}
+
+module.exports = { findBusinessesSerper, enrichBusiness, backfillWebsitePhone, isChain };

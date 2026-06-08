@@ -10,7 +10,7 @@
 //   6. email               → IG bio / website / Hunter
 //   7. phone cascade + AI score + save (skip chains & zero-contact leads)
 
-const { findBusinessesSerper, enrichBusiness } = require('./serper-places');
+const { findBusinessesSerper, enrichBusiness, backfillWebsitePhone } = require('./serper-places');
 const { findBusinessesPlaces } = require('./places-api');
 const { findBusinessesOSM } = require('./osm');
 const { findInstagram } = require('./instagram');
@@ -141,6 +141,13 @@ async function processBusiness(biz, { location, country, no_website_only }, log,
     14000, { handle: null });
   if (ig.handle) log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
   if (!biz.phone && ig.phoneFromBio) biz.phone = ig.phoneFromBio;
+  if (shouldStop()) return null;
+
+  // 2b — backfill: Serper's organic is a variable sample, so a second name+city
+  //     query catches a website/phone the first enrichment missed (free path only).
+  if (!biz.fromPlaces && (!biz.website || !biz.phone)) {
+    await withTimeout(backfillWebsitePhone(biz, location, country, log), 10000, biz);
+  }
   if (shouldStop()) return null;
 
   // 3 — phone: enrichment + the IG bio already cover most. Only spend the extra
