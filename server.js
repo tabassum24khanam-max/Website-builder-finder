@@ -68,7 +68,7 @@ app.post('/api/searches', (req, res) => {
     category, location, country = '',
     radius_km, radius, limit_count, count,
     lat, lng, zip, street,
-    no_website_only = true,
+    no_website_only = true, ai_mode = false,
   } = req.body;
   const effectiveRadius = parseInt(radius_km || radius) || 5;
   const effectiveCount = parseInt(limit_count || count) || 20;
@@ -98,6 +98,7 @@ app.post('/api/searches', (req, res) => {
   search.lat = parseFloat(lat) || null;
   search.lng = parseFloat(lng) || null;
   search.no_website_only = !!no_website_only;
+  search.aiMode = !!ai_mode;
   search.neighborhood = neighborhood;
   search.city = city || null;
   search.zip = zipCode || null;
