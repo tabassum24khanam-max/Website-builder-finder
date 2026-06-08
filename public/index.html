@@ -1601,6 +1601,7 @@ function buildLeadCard(lead) {
   const phone = lead.phone || '';
   const email = lead.email || '';
   const ig = lead.instagram || lead.instagramHandle || '';
+  const tt = lead.tiktok_handle || lead.tiktokHandle || '';
 
   const card = document.createElement('div');
   card.className = 'lead-card';
@@ -1615,6 +1616,7 @@ function buildLeadCard(lead) {
       ${phone ? `<div class="lead-card-row">📞 <span class="truncate">${escHtml(phone)}</span></div>` : ''}
       ${email ? `<div class="lead-card-row">✉️ <span class="truncate">${escHtml(email)}</span></div>` : ''}
       ${ig ? `<div class="lead-card-row">📸 <span class="truncate">@${escHtml(ig.replace('@',''))}</span></div>` : ''}
+      ${tt ? `<div class="lead-card-row">🎵 <span class="truncate">@${escHtml(tt.replace('@',''))}</span></div>` : ''}
       <div class="lead-card-row"><a href="${googleSearchUrl(lead)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--blue);text-decoration:none;">🔎 Open on Google</a></div>
     </div>
   `;
@@ -1799,6 +1801,16 @@ function openLeadModal(id) {
             if (!h && !url) return '<span class="text-dim">–</span>';
             const link = url || `https://instagram.com/${h}`;
             return `<a href="${escHtml(link)}" target="_blank">@${escHtml(h||'instagram')}</a>`;
+          })()}</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">TikTok</div>
+          <div class="detail-value">${(()=>{
+            const h = (lead.tiktok_handle||lead.tiktokHandle||'').replace('@','');
+            const url = lead.tiktok_url||lead.tiktokUrl||'';
+            if (!h && !url) return '<span class="text-dim">–</span>';
+            const link = url || `https://www.tiktok.com/@${h}`;
+            return `<a href="${escHtml(link)}" target="_blank">🎵 @${escHtml(h||'tiktok')}</a>`;
           })()}</div>
         </div>
         <div class="detail-item">

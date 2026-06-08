@@ -114,6 +114,9 @@ function harvest(text, name, cc, store) {
   for (const m of text.matchAll(/instagram\.com\/([A-Za-z0-9._]{2,30})/gi)) {
     const h = m[1]; if (!IG_RESERVED.has(h.toLowerCase()) && verifyHandle(h, name) && !store.ig) store.ig = h;
   }
+  for (const m of text.matchAll(/tiktok\.com\/@([A-Za-z0-9._]{2,30})/gi)) {
+    const h = m[1]; if (!['video', 'tag', 'music', 'discover', 'foryou', 'live'].includes(h.toLowerCase()) && verifyHandle(h, name) && !store.tt) store.tt = h;
+  }
   if (!store.site) {
     for (const m of text.matchAll(/https?:\/\/[^\s"'<>]+/gi)) {
       if (looksLikeOwnSite(m[0], name)) { store.site = cleanUrl(m[0]); break; }
@@ -129,7 +132,7 @@ async function aiEnrich({ name, city, country, website, instagramHandle }, log) 
   const cc = getCountryCode(country);
   const sn = cleanSearchName(name);
   const loc = [city, country].filter(Boolean).join(', ');
-  const store = { phones: [], ig: instagramHandle || null, site: website || null };
+  const store = { phones: [], ig: instagramHandle || null, tt: null, site: website || null };
   let seenDigits = '';
 
   const prompt = `You are an expert local-business researcher. Work to the standard of a meticulous human analyst and find the CONTACT INFO for ONE specific business.
@@ -138,10 +141,11 @@ Business: "${name}"${sn !== name ? ` (search as "${sn}")` : ''}
 Location: ${loc}
 ${website ? `Known website: ${website}` : ''}${instagramHandle ? `\nKnown Instagram: @${instagramHandle}` : ''}
 
-Find three things, most important first:
+Find four things, most important first:
 1) DIRECT PHONE — a mobile or local landline that belongs to THIS business at THIS location.
 2) Official INSTAGRAM @handle.
-3) The business's OWN website (its own domain — not a directory, menu, QR-link, or social page).
+3) Official TIKTOK @handle.
+4) The business's OWN website (its own domain — not a directory, menu, QR-link, or social page).
 
 METHOD — do this like a careful human, not one quick search:
 - Search, then OPEN and READ the most authoritative page: the business's own site/contact page, then its Instagram profile, then a Talabat/Jahez/HungerStation listing, then a directory.
@@ -151,7 +155,7 @@ METHOD — do this like a careful human, not one quick search:
 - Only report a value you ACTUALLY SAW in a tool result. Never invent, complete, or recall a number from memory. If unsure, return null.
 
 When finished, reply with ONLY this JSON (no prose):
-{"phone": "<number or null>", "instagram": "<@handle or null>", "website": "<url or null>"}`;
+{"phone": "<number or null>", "instagram": "<@handle or null>", "tiktok": "<@handle or null>", "website": "<url or null>"}`;
 
   const messages = [{ role: 'user', content: prompt }];
   let model = AI_MODEL;
@@ -189,6 +193,10 @@ When finished, reply with ONLY this JSON (no prose):
             const h = String(j.instagram).replace(/^@/, '').replace(/.*instagram\.com\//, '').replace(/\/.*$/, '');
             if (h && !IG_RESERVED.has(h.toLowerCase()) && verifyHandle(h, name)) store.ig = h;
           }
+          if (j.tiktok && !store.tt) {
+            const h = String(j.tiktok).replace(/^@/, '').replace(/.*tiktok\.com\/@?/, '').replace(/\/.*$/, '');
+            if (h && verifyHandle(h, name)) store.tt = h;
+          }
           if (j.website && !store.site && looksLikeOwnSite(j.website, name)) store.site = cleanUrl(j.website);
         } catch {}
       }
@@ -211,6 +219,7 @@ When finished, reply with ONLY this JSON (no prose):
   return {
     phone: pickPhone(store.phones, cc) || null,
     instagram: store.ig || null,
+    tiktok: store.tt || null,
     website: store.site || null,
   };
 }
