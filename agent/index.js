@@ -92,20 +92,22 @@ async function runSearch(searchConfig, broadcast) {
 async function discover({ category, city, neighborhood, zip, country, lat, lng, radius_km, limit_count, log }) {
   const tag = b => b.map(x => ({ ...x, instagramHint: x.instagramHint || null, searchedCategory: x.searchedCategory || category }));
 
-  // 1. Serper /places (primary) — neighborhood in `q`, ll pin + distance filter
+  // 1. Google Places API (PRIMARY when a key is set) — returns the authoritative
+  //    phone + website straight from Google Maps (the data you see in the app),
+  //    which Serper does not expose. This is what makes the numbers correct.
+  if (process.env.GOOGLE_PLACES_API_KEY) {
+    try {
+      const b = await findBusinessesPlaces({ category, city, neighborhood, zip, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 20, log });
+      if (b.length) return tag(b);
+    } catch (e) { log(`⚠️  Google Places failed (${e.message}) — falling back.`, 'warn'); }
+  }
+
+  // 2. Serper /places — neighborhood in `q`, ll pin + locality filter (free path,
+  //    but Google Maps phone/website are not available here).
   try {
     const b = await findBusinessesSerper({ category, city, neighborhood, zip, country, lat, lng, radiusKm: radius_km || 10, limit: limit_count || 20, log });
     if (b.length) return tag(b);
   } catch (e) { log(`⚠️  Serper Places failed: ${e.message}`, 'warn'); }
-
-  // 2. Google Places API (only if a key is configured)
-  if (process.env.GOOGLE_PLACES_API_KEY) {
-    log('⚠️  Trying Google Places API...', 'warn');
-    try {
-      const b = await findBusinessesPlaces({ category, location: city, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 20, log });
-      if (b.length) return tag(b);
-    } catch (e) { log(`⚠️  Google Places API failed: ${e.message}`, 'warn'); }
-  }
 
   // 3. OpenStreetMap (last resort)
   log('⚠️  Falling back to OpenStreetMap...', 'warn');
@@ -125,8 +127,11 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
 // paid email lookups. Costs ~1-2 Serper calls/business + the phone fallback
 // only when a number is still missing.
 async function processBusiness(biz, { location, country, no_website_only }, log, shouldStop) {
-  // 1 — enrich (one /search): website domain, phone, Instagram hint, address.
-  await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
+  // 1 — enrich. Google Places already gave the authoritative phone/website/
+  //     address, so only Serper-discovered businesses need the extra /search.
+  if (!biz.fromPlaces) {
+    await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
+  }
   if (shouldStop()) return null;
 
   // 2 — Instagram first: the handle + bio is where small local businesses keep
