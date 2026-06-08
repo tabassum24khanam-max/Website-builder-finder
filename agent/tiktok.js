@@ -6,20 +6,6 @@ const { serper, verifyHandle, getCountryCode, cleanSearchName } = require('./uti
 
 const TT_RESERVED = new Set(['video', 'tag', 'music', 'discover', 'foryou', 'following', 'live', 'explore', 'search', 'about', 'legal', 'business', 'upload', 'login']);
 
-// Generic words that don't identify a specific business (so they can't confirm a
-// handle for a short/non-Latin name).
-const STOP = new Set(['coffee', 'cafe', 'cafes', 'roastery', 'roasters', 'specialty', 'speciality', 'restaurant', 'shop', 'bar', 'the', 'and', 'riyadh', 'jeddah', 'saudi', 'arabia',
-  'قهوة', 'مقهى', 'كافيه', 'كوفي', 'مختصة', 'محمصة', 'شاي', 'مطعم', 'الرياض', 'السعودية', 'حي']);
-
-function nameTokenInText(name, text) {
-  if (!text) return false;
-  return (name || '').split(/[\s|/()،,.\-]+/).map(w => w.trim()).some(w => {
-    if (!w || STOP.has(w.toLowerCase())) return false;
-    const ok = /[^\x00-\x7F]/.test(w) ? w.length >= 3 : w.length >= 4;
-    return ok && text.includes(w);
-  });
-}
-
 async function findTikTok({ name, city, country, hint }, log) {
   if (hint) return { handle: hint.replace(/^@/, ''), url: `https://www.tiktok.com/@${hint.replace(/^@/, '')}` };
   const apiKey = process.env.SERPER_API_KEY;
@@ -38,9 +24,10 @@ async function findTikTok({ name, city, country, hint }, log) {
     let handle = (um && !TT_RESERVED.has(um[1].toLowerCase())) ? um[1] : null;
     if (!handle) { const tm = snippet.match(/\(@([A-Za-z0-9._]{2,30})\)/); if (tm) handle = tm[1]; }
     if (!handle || TT_RESERVED.has(handle.toLowerCase())) continue;
-    // Accept on a verified Latin name-core match, OR a distinctive name token in
-    // the result (recovers Arabic names; rejects look-alike accounts).
-    if (!verifyHandle(handle, name) && !nameTokenInText(name, snippet)) continue;
+    // STRICT: the HANDLE itself must match the business name. (Snippet matching is
+    // unsafe on TikTok — a reviewer's video about the cafe mentions its name but
+    // the handle is the reviewer's, e.g. @quicktourguy for "Seven Beans".)
+    if (!verifyHandle(handle, name)) continue;
     if (log) log(`🎵 TikTok: @${handle}`);
     return { handle, url: `https://www.tiktok.com/@${handle}` };
   }
