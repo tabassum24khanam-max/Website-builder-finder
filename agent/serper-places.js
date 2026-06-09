@@ -28,6 +28,13 @@ const CHAIN_DENYLIST = [
   'golds gym', 'planet fitness', 'fitness first', 'snap fitness', 'curves',
   'century 21', 're/max', 'remax', 'keller williams', 'coldwell banker',
   'mr biryani', 'mr. biryani', 'biryani house', 'paradise biryani',
+  // US / NYC national chains (distinctive names only, to avoid false matches)
+  'chipotle', 'panera', 'chick-fil-a', 'chickfila', 'sweetgreen', 'pret a manger',
+  "gregory's coffee", 'gregorys coffee', 'blue bottle', 'bluestone lane', 'joe & the juice',
+  '7-eleven', 'crumbl', 'white castle', 'le pain quotidien', 'paris baguette', 'tous les jours',
+  'wingstop', 'bareburger', 'dos toros', 'dig inn', 'juice press', 'playa bowls', 'jollibee',
+  'panda express', 'olive garden', 'red lobster', 'cheesecake factory', 'buffalo wild wings',
+  'chopt', 'auntie anne', 'jamba juice', 'pollo loco',
 ];
 
 function isChain(name) {
