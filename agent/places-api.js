@@ -18,6 +18,12 @@ const CHAIN_DENYLIST = [
   'applebee', 'ihop', 'denny', 'outback steakhouse', 'chillis',
   'steak n shake', 'sonic drive', 'dairy queen', 'cold stone',
   'century 21', 're/max', 'keller williams', 'coldwell banker',
+  'chipotle', 'panera', 'chick-fil-a', 'chickfila', 'sweetgreen', 'pret a manger',
+  "gregory's coffee", 'gregorys coffee', 'blue bottle', 'bluestone lane', 'joe & the juice',
+  '7-eleven', 'crumbl', 'white castle', 'le pain quotidien', 'paris baguette', 'tous les jours',
+  'wingstop', 'bareburger', 'dos toros', 'dig inn', 'juice press', 'playa bowls', 'jollibee',
+  'panda express', 'olive garden', 'red lobster', 'cheesecake factory', 'buffalo wild wings',
+  'chopt', 'auntie anne', 'jamba juice', 'pollo loco',
 ];
 
 function isChain(name) {
