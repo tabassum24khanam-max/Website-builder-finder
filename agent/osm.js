@@ -81,7 +81,8 @@ async function overpassQuery(query) {
       const res = await fetch(endpoint, {
         method: 'POST',
         body: 'data=' + encodeURIComponent(query),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        // Overpass returns 406 without a UA
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'LeadHunter/2.0 (lead-discovery)' },
       });
       if (res.ok) return await res.json();
       lastErr = new Error(`HTTP ${res.status} from ${endpoint}`);

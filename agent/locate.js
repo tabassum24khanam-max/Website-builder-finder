@@ -126,9 +126,57 @@ async function resolveLocation({ q, city, country }) {
     return null;
   }
 
-  // 4) otherwise: treat as an address/place to geocode
+  // 4) street intersection — "Broadway & 31st Street, Astoria NY". Nominatim
+  //    can't parse these; OSM can: geocode the locality, then ask Overpass for
+  //    the shared node of the two named ways.
+  const ix = q.match(/^\s*([^&,]+?)\s*(?:&|\band\b)\s*([^,]+?)\s*(?:,\s*(.+))?$/i);
+  if (ix && ix[1] && ix[2] && /\d|\b(st|street|ave|avenue|rd|road|blvd|boulevard|way|dr|drive|lane|ln)\b/i.test(ix[1] + ' ' + ix[2])) {
+    const locality = (ix[3] || '').trim() || [city, country].filter(Boolean).join(', ');
+    const hit = await intersection(ix[1].trim(), ix[2].trim(), locality, country);
+    if (hit) return { ...hit, label: `${ix[1].trim()} & ${ix[2].trim()}` };
+  }
+
+  // 5) otherwise: treat as an address/place to geocode
   const g = await geocodeText(q, country);
   return g ? { ...g, label: q.slice(0, 40) } : null;
+}
+
+// Shared node of two named streets near a locality (Overpass, free, exact).
+async function intersection(streetA, streetB, localityText, country) {
+  const ref = await geocodeText(localityText, country);
+  if (!ref) return null;
+  const esc = s => s.replace(/[\\"]/g, '').trim();
+  // Case-insensitive exact name match catches "31st Street" vs "31st St" poorly,
+  // so try the typed names, then with common suffix expansions.
+  const variants = (s) => {
+    const out = [s];
+    if (/\bst\.?$/i.test(s)) out.push(s.replace(/\bst\.?$/i, 'Street'));
+    if (/\bave\.?$/i.test(s)) out.push(s.replace(/\bave\.?$/i, 'Avenue'));
+    if (/\brd\.?$/i.test(s)) out.push(s.replace(/\brd\.?$/i, 'Road'));
+    if (/\bblvd\.?$/i.test(s)) out.push(s.replace(/\bblvd\.?$/i, 'Boulevard'));
+    return out;
+  };
+  for (const a of variants(streetA)) {
+    for (const b of variants(streetB)) {
+      const ql = `[out:json][timeout:20];
+way["highway"]["name"~"^${esc(a)}$",i](around:4000,${ref.lat},${ref.lng})->.a;
+way["highway"]["name"~"^${esc(b)}$",i](around:4000,${ref.lat},${ref.lng})->.b;
+node(w.a)(w.b);out 5;`;
+      try {
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST', body: 'data=' + encodeURIComponent(ql),
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'LeadHunter/2.0 (lead-discovery)' },
+        });
+        if (!res.ok) continue;
+        const j = await res.json();
+        const nodes = (j.elements || []).filter(e => e.lat && e.lon);
+        if (nodes.length) {
+          return { lat: nodes.reduce((s, n) => s + n.lat, 0) / nodes.length, lng: nodes.reduce((s, n) => s + n.lon, 0) / nodes.length };
+        }
+      } catch {}
+    }
+  }
+  return null;
 }
 
 module.exports = { resolveLocation };
