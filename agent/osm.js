@@ -134,13 +134,30 @@ async function findBusinessesOSM({ category, location, country, lat, lng, radius
     return parseElements(data, category, limit, log);
   }
 
+  // Overpass's `out ... qt N` cap truncates SERVER-side in quadtile order — in a
+  // dense city a 5km query can blow the cap and silently drop the tiles nearest
+  // the user. Stage the radius outward instead: a tight query first (never hits
+  // the cap, structurally nearest), widening only while results are thin.
+  const stagedQuery = async (websiteFilter, label) => {
+    const radii = [...new Set([Math.min(1200, radius), Math.min(2500, radius), radius])].sort((a, b) => a - b);
+    let best = [];
+    for (const r of radii) {
+      const union = buildUnion(tagPairs, r, lat, lng, websiteFilter);
+      const query = `[out:json][timeout:40];(${union});out tags center qt 400;`;
+      log(`🔍 OSM query (${label}, ${(r / 1000).toFixed(1)}km)...`);
+      try {
+        const data = await overpassQuery(query);
+        const elements = (data.elements || []).filter(el => el.tags?.name);
+        if (elements.length > best.length) best = elements;
+        if (best.length >= limit * 1.5) break; // enough close-by — stop widening
+      } catch (e) { log(`⚠️  Overpass stage failed: ${e.message}`, 'warn'); }
+    }
+    return best;
+  };
+
   // 3. First try: filter for no-website businesses if requested
   if (noWebsiteOnly) {
-    const union = buildUnion(tagPairs, radius, lat, lng, true);
-    const query = `[out:json][timeout:40];(${union});out tags center qt ${Math.max(limit * 3, 150)};`;
-    log(`🔍 OSM query (${tagPairs.length} tag${tagPairs.length>1?'s':''}, ${radius_km}km, no-website filter on)...`);
-    const data = await overpassQuery(query);
-    const elements = (data.elements || []).filter(el => el.tags?.name);
+    const elements = await stagedQuery(true, `${tagPairs.length} tag${tagPairs.length > 1 ? 's' : ''}, no-website`);
     log(`📊 OSM returned ${elements.length} named businesses without websites`);
     if (elements.length > 0) {
       return parseElements({ elements }, category, limit, log, lat, lng);
@@ -149,11 +166,8 @@ async function findBusinessesOSM({ category, location, country, lat, lng, radius
   }
 
   // 4. Fallback: get ALL businesses in the category (with or without website)
-  const union = buildUnion(tagPairs, radius, lat, lng, false);
-  const query = `[out:json][timeout:40];(${union});out tags center qt ${Math.max(limit * 3, 150)};`;
-  log(`🔍 OSM query (all ${category} in ${radius_km}km)...`);
-  const data = await overpassQuery(query);
-  return parseElements(data, category, limit, log, lat, lng);
+  const elements = await stagedQuery(false, `all ${category}`);
+  return parseElements({ elements }, category, limit, log, lat, lng);
 }
 
 function parseElements(data, category, limit, log, centerLat, centerLng) {

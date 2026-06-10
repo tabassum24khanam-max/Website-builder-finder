@@ -107,9 +107,12 @@ function looksLikeOwnSite(url, name) {
 }
 
 // Harvest contact candidates from whatever text the agent has read so far.
-function harvest(text, name, cc, store) {
+// `srcIdx` identifies WHICH tool result the value came from, so consensus can
+// demand the same number on two DIFFERENT pages (one page repeating its own
+// digits proves nothing).
+function harvest(text, name, cc, store, srcIdx = 0) {
   for (const p of (text.match(/\+?\(?\d[\d\s().\-]{6,18}\d/g) || [])) {
-    if (isValidPhone(p, cc)) store.phones.push({ raw: p, weight: 1 });
+    if (isValidPhone(p, cc)) store.phones.push({ raw: p, weight: 1, src: srcIdx });
   }
   for (const m of text.matchAll(/instagram\.com\/([A-Za-z0-9._]{2,30})/gi)) {
     const h = m[1]; if (!IG_RESERVED.has(h.toLowerCase()) && verifyHandle(h, name) && !store.ig) store.ig = h;
@@ -211,7 +214,8 @@ When finished, reply with ONLY this JSON (no prose):
         result = await withTimeout(runTool(tc.function.name, args, serperKey, country, log), 15000, 'Tool timed out.');
       } catch (e) { result = `Error: ${e.message}`; }
       seenDigits += (result || '').replace(/\D/g, '');
-      harvest(result || '', name, cc, store);
+      store._src = (store._src || 0) + 1;
+      harvest(result || '', name, cc, store, store._src);
       messages.push({ role: 'tool', tool_call_id: tc.id, content: (result || '').slice(0, 4000) });
     }
   }
@@ -222,12 +226,13 @@ When finished, reply with ONLY this JSON (no prose):
   // different branch in another city or a neighbouring listing's line.
   let phoneCands = store.phones;
   if (!phoneCands.some(c => (c.weight || 1) >= 5)) {
-    const counts = new Map();
+    const srcs = new Map(); // last9 → set of DISTINCT tool results it appeared in
     for (const c of phoneCands) {
       const k = String(c.raw).replace(/\D/g, '').slice(-9);
-      counts.set(k, (counts.get(k) || 0) + 1);
+      if (!srcs.has(k)) srcs.set(k, new Set());
+      srcs.get(k).add(c.src || 0);
     }
-    phoneCands = phoneCands.filter(c => counts.get(String(c.raw).replace(/\D/g, '').slice(-9)) >= 2);
+    phoneCands = phoneCands.filter(c => (srcs.get(String(c.raw).replace(/\D/g, '').slice(-9)) || new Set()).size >= 2);
   }
 
   return {
