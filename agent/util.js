@@ -68,8 +68,13 @@ function httpGet(url, { timeoutMs = 8000, maxRedirects = 4, maxBytes = 250000, h
 }
 
 // ── Serper POST (single, timeout-guarded entry point) ────────────────────────
+// /search calls degrade automatically to a FREE engine (DuckDuckGo/Bing via the
+// r.jina.ai reader — see free-search.js) when Serper fails (no credits, no key,
+// network). The fallback returns the same { organic: [...] } shape, so every
+// consumer (AI agent, IG/TikTok finders, backfill, phone agent) keeps working.
+// /places has no free equivalent here — discovery falls back to OSM instead.
 
-function serper(path, body, apiKey, timeoutMs = 12000) {
+function serperRaw(path, body, apiKey, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
     const req = https.request({
@@ -91,6 +96,22 @@ function serper(path, body, apiKey, timeoutMs = 12000) {
     req.write(data);
     req.end();
   });
+}
+
+async function serper(path, body, apiKey, timeoutMs = 12000) {
+  try {
+    if (!apiKey && path === '/search') throw new Error('no serper key');
+    return await serperRaw(path, body, apiKey, timeoutMs);
+  } catch (e) {
+    if (path === '/search') {
+      try {
+        const { freeSearch } = require('./free-search'); // lazy: avoids require cycles
+        const r = await freeSearch(String(body.q || ''), { num: body.num || 10 });
+        if (r.organic.length) return { organic: r.organic, _free: r.source };
+      } catch {}
+    }
+    throw e;
+  }
 }
 
 // ── Name normalization (for matching handles / domains to a business) ────────
@@ -117,7 +138,7 @@ function cleanUrl(u) {
   try { new URL(s); return s.split('#')[0]; } catch { return null; }
 }
 
-const SOCIAL_OR_DIRECTORY = /instagram\.com|facebook\.com|fb\.com|tiktok\.com|linkedin\.com|youtube\.com|youtu\.be|twitter\.com|x\.com|snapchat\.com|pinterest\.|threads\.net|whatsapp\.com|wa\.me|t\.me|telegram\.|tripadvisor\.|yelp\.|foursquare\.|zomato\.|trustpilot\.|maps\.google|google\.[a-z.]+\/maps|goo\.gl\/maps|maps\.app|wikipedia\.org|wikiwand\.|wikidata\.|opentable\.|grubhub\.|doordash\.|ubereats\.|deliveroo\.|talabat\.|hungerstation\.|jahez\.|chefz\.|toyou\.|mrsool\.|swiggy\.|district\.in|noon\.com|amazon\.|booking\.com|agoda\.|expedia\.|hotels\.com|justdial\.|sulekha\.|menupages\.|wafyapp\.|mexil\.|linktr\.ee|bit\.ly|tinyurl\.|restaurants?-world\.|menu-world\.|menu-res\.|restaurant-?guru\.|wheree\.|near-place\.|top10place\.|places-world\.|\.menu-[a-z]+\.|restaurants?-guide\.|goto-where\.|taker\.io|finedinemenu\.|yallaqrcodes\.|mahally\.|mat3am\.|ksarestaurant\.|eyeofriyadh\.|cafesriyadh\.|saudicoffeecrafters\.|wanderboat\.|wanderlog\.|welcomesaudi\.|safarway\.|timeoutriyadh\.|whatsonsaudiarabia\.|qavashop\.|daymarkcoffeeguide\.|houseofsaud\.|the-fork\.|thefork\.|restaurantji\.|uqr\.to|qrco\.de|qr\.to|dlilsa\.|daleeli\.|\.page\.link|linktr\.ee|lnk\.bio|bit\.ly|cutt\.ly|rb\.gy|tinyurl\./i;
+const SOCIAL_OR_DIRECTORY = /instagram\.com|facebook\.com|fb\.com|tiktok\.com|linkedin\.com|youtube\.com|youtu\.be|twitter\.com|x\.com|snapchat\.com|pinterest\.|threads\.net|whatsapp\.com|wa\.me|t\.me|telegram\.|tripadvisor\.|yelp\.|foursquare\.|zomato\.|trustpilot\.|maps\.google|google\.[a-z.]+\/maps|goo\.gl\/maps|maps\.app|wikipedia\.org|wikiwand\.|wikidata\.|opentable\.|grubhub\.|doordash\.|ubereats\.|deliveroo\.|talabat\.|hungerstation\.|jahez\.|chefz\.|toyou\.|mrsool\.|swiggy\.|district\.in|noon\.com|amazon\.|booking\.com|agoda\.|expedia\.|hotels\.com|justdial\.|sulekha\.|menupages\.|wafyapp\.|mexil\.|linktr\.ee|bit\.ly|tinyurl\.|restaurants?-world\.|menu-world\.|menu-res\.|restaurant-?guru\.|wheree\.|near-place\.|top10place\.|places-world\.|\.menu-[a-z]+\.|restaurants?-guide\.|goto-where\.|taker\.io|finedinemenu\.|yallaqrcodes\.|mahally\.|mat3am\.|ksarestaurant\.|eyeofriyadh\.|cafesriyadh\.|saudicoffeecrafters\.|wanderboat\.|wanderlog\.|welcomesaudi\.|safarway\.|timeoutriyadh\.|whatsonsaudiarabia\.|qavashop\.|daymarkcoffeeguide\.|houseofsaud\.|the-fork\.|thefork\.|restaurantji\./i;
 
 function isSocialOrDirectory(url) {
   return SOCIAL_OR_DIRECTORY.test(url || '');
@@ -358,9 +379,13 @@ function verifyHandle(handle, businessName) {
   // distinctive name token appearing in the result snippet instead.
   if (!n || n.length < 4) return false;
 
-  const k = Math.min(6, n.length);
-  if (h.includes(n.slice(0, k))) return true;                          // handle contains name core
-  if (n.includes(h.slice(0, Math.min(6, h.length)))) return true;      // name contains handle core
+  // A probe that is itself a generic word proves nothing — "Coffeed" must not
+  // match @coffeecloudnyc just because both start with "coffee".
+  const GENERIC_PROBE = new Set(['coffee', 'coffe', 'cafeca', 'cafes', 'cafee', 'sweets', 'bakery', 'grill', 'pizza', 'burger', 'kitchen', 'lounge', 'resta', 'restau']);
+  const probeOf = s => (s.length <= 8 ? s : s.slice(0, 6)); // short cores must match in full
+  const np = probeOf(n), hp = probeOf(h);
+  if (!GENERIC_PROBE.has(np) && h.includes(np)) return true;           // handle contains name core
+  if (!GENERIC_PROBE.has(hp) && n.includes(hp)) return true;           // name contains handle core
   return false;
 }
 

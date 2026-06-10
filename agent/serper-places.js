@@ -34,7 +34,8 @@ const CHAIN_DENYLIST = [
   '7-eleven', 'crumbl', 'white castle', 'le pain quotidien', 'paris baguette', 'tous les jours',
   'wingstop', 'bareburger', 'dos toros', 'dig inn', 'juice press', 'playa bowls', 'jollibee',
   'panda express', 'olive garden', 'red lobster', 'cheesecake factory', 'buffalo wild wings',
-  'chopt', 'sweetgreen', 'auntie anne', 'jamba juice', "mcdonald's", 'pollo loco',
+  'chopt', 'auntie anne', 'jamba juice', 'pollo loco',
+  'gong cha', 'heytea', 'joe coffee', 'kung fu tea', 'sharetea', 'coco fresh', 'tiger sugar', 'spot dessert', 'paris baguette',
 ];
 
 function isChain(name) {
