@@ -379,9 +379,13 @@ function verifyHandle(handle, businessName) {
   // distinctive name token appearing in the result snippet instead.
   if (!n || n.length < 4) return false;
 
-  const k = Math.min(6, n.length);
-  if (h.includes(n.slice(0, k))) return true;                          // handle contains name core
-  if (n.includes(h.slice(0, Math.min(6, h.length)))) return true;      // name contains handle core
+  // A probe that is itself a generic word proves nothing — "Coffeed" must not
+  // match @coffeecloudnyc just because both start with "coffee".
+  const GENERIC_PROBE = new Set(['coffee', 'coffe', 'cafeca', 'cafes', 'cafee', 'sweets', 'bakery', 'grill', 'pizza', 'burger', 'kitchen', 'lounge', 'resta', 'restau']);
+  const probeOf = s => (s.length <= 8 ? s : s.slice(0, 6)); // short cores must match in full
+  const np = probeOf(n), hp = probeOf(h);
+  if (!GENERIC_PROBE.has(np) && h.includes(np)) return true;           // handle contains name core
+  if (!GENERIC_PROBE.has(hp) && n.includes(hp)) return true;           // name contains handle core
   return false;
 }
 

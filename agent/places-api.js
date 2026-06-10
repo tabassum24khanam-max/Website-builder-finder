@@ -26,6 +26,7 @@ const CHAIN_DENYLIST = [
   'wingstop', 'bareburger', 'dos toros', 'dig inn', 'juice press', 'playa bowls', 'jollibee',
   'panda express', 'olive garden', 'red lobster', 'cheesecake factory', 'buffalo wild wings',
   'chopt', 'auntie anne', 'jamba juice', 'pollo loco',
+  'gong cha', 'heytea', 'joe coffee', 'kung fu tea', 'sharetea', 'coco fresh', 'tiger sugar', 'spot dessert', 'paris baguette',
 ];
 
 function isChain(name) {

@@ -216,8 +216,22 @@ When finished, reply with ONLY this JSON (no prose):
     }
   }
 
+  // Phone: a final answer the agent corroborated (weight 5) wins. Without one,
+  // require CONSENSUS among harvested numbers — the same digits seen on ≥2 of
+  // the pages/results read. A singleton scraped off one page is too often a
+  // different branch in another city or a neighbouring listing's line.
+  let phoneCands = store.phones;
+  if (!phoneCands.some(c => (c.weight || 1) >= 5)) {
+    const counts = new Map();
+    for (const c of phoneCands) {
+      const k = String(c.raw).replace(/\D/g, '').slice(-9);
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    phoneCands = phoneCands.filter(c => counts.get(String(c.raw).replace(/\D/g, '').slice(-9)) >= 2);
+  }
+
   return {
-    phone: pickPhone(store.phones, cc) || null,
+    phone: pickPhone(phoneCands, cc) || null,
     instagram: store.ig || null,
     tiktok: store.tt || null,
     website: store.site || null,
