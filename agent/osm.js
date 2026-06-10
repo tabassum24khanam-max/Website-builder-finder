@@ -143,7 +143,7 @@ async function findBusinessesOSM({ category, location, country, lat, lng, radius
     const elements = (data.elements || []).filter(el => el.tags?.name);
     log(`📊 OSM returned ${elements.length} named businesses without websites`);
     if (elements.length > 0) {
-      return parseElements({ elements }, category, limit, log);
+      return parseElements({ elements }, category, limit, log, lat, lng);
     }
     log(`⚠️  No no-website results found. Widening to ALL businesses in this category...`);
   }
@@ -153,12 +153,25 @@ async function findBusinessesOSM({ category, location, country, lat, lng, radius
   const query = `[out:json][timeout:40];(${union});out tags center qt ${Math.max(limit * 3, 150)};`;
   log(`🔍 OSM query (all ${category} in ${radius_km}km)...`);
   const data = await overpassQuery(query);
-  return parseElements(data, category, limit, log);
+  return parseElements(data, category, limit, log, lat, lng);
 }
 
-function parseElements(data, category, limit, log) {
+function parseElements(data, category, limit, log, centerLat, centerLng) {
   const elements = (data.elements || []).filter(el => el.tags?.name);
   log(`📊 Found ${elements.length} named businesses on OpenStreetMap`);
+
+  // Overpass `qt` output is quadtile order, NOT nearest-first — slicing it raw
+  // can drop the businesses closest to the user. Sort by distance to the centre
+  // before taking `limit`, so "near me" actually means near.
+  if (typeof centerLat === 'number' && typeof centerLng === 'number') {
+    const d = el => {
+      const la = el.lat ?? el.center?.lat, lo = el.lon ?? el.center?.lon;
+      if (la == null || lo == null) return Infinity;
+      const dy = (la - centerLat) * 111.32, dx = (lo - centerLng) * 111.32 * Math.cos(centerLat * Math.PI / 180);
+      return dy * dy + dx * dx;
+    };
+    elements.sort((a, b) => d(a) - d(b));
+  }
 
   return elements.slice(0, limit).map(el => {
     const t = el.tags;
