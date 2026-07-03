@@ -8,15 +8,28 @@ const TT_RESERVED = new Set(['video', 'tag', 'music', 'discover', 'foryou', 'fol
 
 async function findTikTok({ name, city, country, hint }, log) {
   if (hint) return { handle: hint.replace(/^@/, ''), url: `https://www.tiktok.com/@${hint.replace(/^@/, '')}` };
+  // Works keyless — serper() degrades to the free DDG/Bing engine.
   const apiKey = process.env.SERPER_API_KEY;
-  if (!apiKey) return { handle: null, url: null };
 
   const loc = [city, country].filter(Boolean).join(' ');
+  // Retry with a second phrasing when the first query surfaces nothing — the
+  // same adaptive behavior a human researcher uses.
+  const queries = [
+    `${cleanSearchName(name) || name} ${loc} tiktok`,
+    `${cleanSearchName(name) || name} ${city || ''} tiktok account`.replace(/\s+/g, ' ').trim(),
+  ];
+  for (const q of queries) {
+    const hit = await findTikTokOnce(q, name, country, apiKey, log).catch(() => null);
+    if (hit) return hit;
+  }
+  return { handle: null, url: null };
+}
+
+async function findTikTokOnce(q, name, country, apiKey, log) {
   const data = await serper('/search', {
-    q: `${cleanSearchName(name) || name} ${loc} tiktok`,
-    gl: getCountryCode(country), hl: 'en', num: 10,
+    q, gl: getCountryCode(country), hl: 'en', num: 10,
   }, apiKey, 9000).catch(() => null);
-  if (!data) return { handle: null, url: null };
+  if (!data) return null;
 
   for (const r of (data.organic || [])) {
     const snippet = `${r.title || ''} ${r.snippet || ''}`;
@@ -31,7 +44,7 @@ async function findTikTok({ name, city, country, hint }, log) {
     if (log) log(`🎵 TikTok: @${handle}`);
     return { handle, url: `https://www.tiktok.com/@${handle}` };
   }
-  return { handle: null, url: null };
+  return null; // miss → caller tries the next query phrasing
 }
 
 module.exports = { findTikTok };

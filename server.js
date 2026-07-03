@@ -94,9 +94,8 @@ app.post('/api/searches', (req, res) => {
   if (!category || !cleanLocation) {
     return res.status(400).json({ error: 'category and a location (city, zip, or neighborhood) are required' });
   }
-  if (!process.env.SERPER_API_KEY) {
-    return res.status(400).json({ error: 'Search API key (SERPER_API_KEY) not configured. Check your environment variables.' });
-  }
+  // No key required: without SERPER_API_KEY (or with a dead one) discovery
+  // falls back to OpenStreetMap and enrichment to the free DDG/Bing search.
 
   const searchId = uuid();
   q.insertSearch.run({
@@ -145,7 +144,9 @@ app.get('/api/leads/:id', (req, res) => {
 app.put('/api/leads/:id', (req, res) => {
   const lead = q.getLead.get(req.params.id);
   if (!lead) return res.status(404).json({ error: 'Not found' });
-  const { status, notes, outreach_message } = req.body;
+  const { status, notes } = req.body;
+  // Accept both naming conventions — older clients sent camelCase.
+  const outreach_message = req.body.outreach_message ?? req.body.outreachMessage;
   q.updateLead.run({
     id: req.params.id,
     status: status ?? lead.status,
@@ -195,6 +196,8 @@ app.get('/api/export/:searchId/excel', async (req, res) => {
     { header: 'IG Followers', key: 'instagram_followers', width: 14 },
     { header: 'IG Posts/Month', key: 'instagram_posts_per_month', width: 14 },
     { header: 'IG Last Post', key: 'instagram_last_post', width: 14 },
+    { header: 'TikTok', key: 'tiktok_handle', width: 20 },
+    { header: 'TikTok URL', key: 'tiktok_url', width: 32 },
     { header: 'LinkedIn', key: 'linkedin_company_url', width: 36 },
     { header: 'Owner', key: 'linkedin_owner_name', width: 20 },
     { header: 'Owner LinkedIn', key: 'linkedin_owner_url', width: 36 },

@@ -70,8 +70,25 @@ function parseMarkdownResults(md) {
   return out;
 }
 
+// Global min-interval throttle: the keyless r.jina.ai tier allows ~20 req/min.
+// A full search fires dozens of lookups (enrich + Instagram + TikTok + backfill
+// + phone agent per business); without pacing they 429 and fields come back
+// empty. All calls are serialized ≥3s apart.
+let _lastCall = 0;
+let _chain = Promise.resolve();
+function throttled(fn) {
+  const run = _chain.then(async () => {
+    const wait = _lastCall + 3000 - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    _lastCall = Date.now();
+    return fn();
+  });
+  _chain = run.catch(() => {}); // keep the chain alive after failures
+  return run;
+}
+
 async function searchOnce(engineUrl) {
-  const { status, body } = await get('https://r.jina.ai/' + engineUrl);
+  const { status, body } = await throttled(() => get('https://r.jina.ai/' + engineUrl));
   if (status !== 200 || !body) throw new Error(`jina ${status}`);
   return parseMarkdownResults(body);
 }

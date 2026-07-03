@@ -45,8 +45,9 @@ async function findInstagram({ name, city, country, websiteUrl, hint }, log) {
     } catch {}
   }
 
-  // 4. Targeted Serper search as a last resort.
-  if (!result.handle && process.env.SERPER_API_KEY) {
+  // 4. Targeted search as a last resort (works keyless — serper() degrades to
+  //    the free DDG/Bing engine when the key is missing or out of credits).
+  if (!result.handle) {
     try {
       const found = await searchInstagram(name, city, country, log);
       if (found) Object.assign(result, found);
@@ -97,9 +98,22 @@ async function searchInstagram(name, city, country, log) {
   const loc = [city, country].filter(Boolean).join(' ');
   // A NATURAL query ("Name City instagram") returns the actual profile; a
   // `site:instagram.com` query returns nothing via Serper/Google (verified).
+  // Like a human researcher, retry with a different phrasing when the first
+  // query surfaces nothing usable — the second angle often does.
+  const queries = [
+    `${cleanSearchName(name) || name} ${loc} instagram`,
+    `${cleanSearchName(name) || name} ${city || ''} instagram profile`.replace(/\s+/g, ' ').trim(),
+  ];
+  for (const q of queries) {
+    const found = await searchInstagramOnce(q, name, country, log).catch(() => null);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function searchInstagramOnce(q, name, country, log) {
   const data = await serper('/search', {
-    q: `${cleanSearchName(name) || name} ${loc} instagram`,
-    gl: getCountryCode(country), hl: 'en', num: 10,
+    q, gl: getCountryCode(country), hl: 'en', num: 10,
   }, process.env.SERPER_API_KEY, 10000);
 
   for (const r of (data.organic || [])) {
