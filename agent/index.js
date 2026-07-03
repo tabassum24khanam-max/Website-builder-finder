@@ -10,7 +10,7 @@
 //   6. email               → IG bio / website / Hunter
 //   7. phone cascade + AI score + save (skip chains & zero-contact leads)
 
-const { findBusinessesSerper, enrichBusiness, backfillWebsitePhone } = require('./serper-places');
+const { findBusinessesSerper, enrichBusiness, backfillWebsitePhone, isChain } = require('./serper-places');
 const { findBusinessesPlaces } = require('./places-api');
 const { findBusinessesOSM } = require('./osm');
 const { findInstagram } = require('./instagram');
@@ -22,7 +22,9 @@ const { q } = require('../db');
 const { v4: uuid } = require('uuid');
 
 const DELAY = parseInt(process.env.SCRAPE_DELAY_MS || '300', 10);
-const BUSINESS_BUDGET_MS = 60000; // 1-minute hard cap per business
+const BUSINESS_BUDGET_MS = 180000; // per-business hard cap — generous so the FREE
+// search fallback (throttled ~3s/req, 10-20s per fetch) never silently truncates
+// a lookup; with a healthy Serper key steps return in 1-3s and this is never hit
 
 const activeSearches = new Map();
 function stopSearch(searchId) {
@@ -61,7 +63,7 @@ async function runSearch(searchConfig, broadcast) {
       broadcast({ type: 'agent_step', searchId, step: 'analyzing', businessName: biz.name });
 
       // Overall hard cap per business — if anything drags, we move on.
-      const lead = await withTimeout(processBusiness(biz, { location: cityLabel, country, category, no_website_only, aiMode }, log, shouldStop), aiMode ? 100000 : BUSINESS_BUDGET_MS, null);
+      const lead = await withTimeout(processBusiness(biz, { location: cityLabel, country, category, no_website_only, aiMode }, log, shouldStop), aiMode ? 180000 : BUSINESS_BUDGET_MS, null);
 
       if (!lead) { log(`⏭️  Skipped ${biz.name} (timed out or no data)`, 'warn'); continue; }
       if (lead.skip) { log(`⏭️  Skipping ${biz.name} — ${lead.reason}`, 'info'); continue; }
@@ -70,7 +72,7 @@ async function runSearch(searchConfig, broadcast) {
       q.insertLead.run(toRow(leadId, searchId, cityLabel, category, lead));
       leadsFound++;
       log(`🏆 Score ${lead.aiScore}/10 — ${lead.name} saved`, lead.aiScore >= 7 ? 'success' : 'info');
-      broadcast({ type: 'lead_found', searchId, lead: { id: leadId, ...lead, searchId } });
+      broadcast({ type: 'lead_found', searchId, lead: { id: leadId, ...lead, city: cityLabel, searchId } });
 
       // Honor the requested count — stop once we've saved that many leads.
       if (leadsFound >= targetCount) { log(`🎯 Reached target of ${targetCount} leads.`, 'success'); break; }
@@ -111,11 +113,14 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
     if (b.length) return tag(b);
   } catch (e) { log(`⚠️  Serper Places failed: ${e.message}`, 'warn'); }
 
-  // 3. OpenStreetMap (last resort)
+  // 3. OpenStreetMap (last resort). Unlike the other two paths, OSM does no
+  //    chain filtering of its own — apply the same isChain gate here so a
+  //    Starbucks never reaches the pipeline through this route.
   log('⚠️  Falling back to OpenStreetMap...', 'warn');
   try {
     const loc = [neighborhood, city].filter(Boolean).join(', ') || zip || city;
-    const b = await findBusinessesOSM({ category, location: loc, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 30, noWebsiteOnly: false, log });
+    const raw = await findBusinessesOSM({ category, location: loc, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: (limit_count || 30) * 2, noWebsiteOnly: false, log });
+    const b = raw.filter(x => { const c = isChain(x.name); if (c) log(`⏭️  Chain skipped: ${x.name}`); return !c; }).slice(0, limit_count || 30);
     if (b.length) return tag(b);
   } catch (e) { log(`⚠️  OpenStreetMap also failed: ${e.message}`, 'warn'); }
 
@@ -139,7 +144,7 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
     log('🤖 AI deep research (phone · Instagram · website)…');
     const r = await withTimeout(
       aiEnrich({ name: biz.name, city: location, country, website: biz.website, instagramHandle: biz.instagramHint?.handle }, log),
-      50000, null);
+      90000, null);
     if (r) {
       if (r.phone) biz.phone = r.phone;
       if (r.website && !biz.website) biz.website = r.website;
@@ -153,25 +158,25 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
     // ── SERPER MODE (default) ──────────────────────────────────────────────────
     // 1 — enrich (Places-discovered businesses already have authoritative data).
     if (!biz.fromPlaces) {
-      await withTimeout(enrichBusiness(biz, location, country, log), 14000, biz);
+      await withTimeout(enrichBusiness(biz, location, country, log), 30000, biz);
     }
     if (shouldStop()) return null;
 
     // 2 — Instagram first (the bio is where small businesses keep their phone).
     ig = await withTimeout(
       findInstagram({ name: biz.name, city: location, country, websiteUrl: biz.website, hint: biz.instagramHint }, log),
-      14000, ig);
+      30000, ig);
     if (ig.handle) log(`📸 @${ig.handle} — ${ig.followers?.toLocaleString() || '?'} followers`);
     if (!biz.phone && ig.phoneFromBio) biz.phone = ig.phoneFromBio;
     if (shouldStop()) return null;
 
     // 2a — TikTok handle (a quick targeted search, strictly name-verified).
-    tiktok = await withTimeout(findTikTok({ name: biz.name, city: location, country }, log), 10000, tiktok);
+    tiktok = await withTimeout(findTikTok({ name: biz.name, city: location, country }, log), 25000, tiktok);
     if (shouldStop()) return null;
 
     // 2b — backfill: a second name+city query catches website/phone the first missed.
     if (!biz.fromPlaces && (!biz.website || !biz.phone)) {
-      await withTimeout(backfillWebsitePhone(biz, location, country, log), 10000, biz);
+      await withTimeout(backfillWebsitePhone(biz, location, country, log), 25000, biz);
     }
     if (shouldStop()) return null;
 
@@ -181,7 +186,7 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
       log('📞 Looking for a direct number…');
       const found = await withTimeout(
         phoneAgentFind({ name: biz.name, city: location, country, website: biz.website, instagramHandle: ig.handle || biz.instagramHint?.handle }, log),
-        40000, null);
+        90000, null);
       if (found) { biz.phone = found; log(`📞 Found: ${found}`); }
     }
   }

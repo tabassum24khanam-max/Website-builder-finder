@@ -128,10 +128,10 @@ async function findBusinessesOSM({ category, location, country, lat, lng, radius
     const safeName = category.replace(/[\\"]/g, '');
     const websiteFilter = noWebsiteOnly ? '["website"!~"."]' : '';
     const union = `nwr["name"~"${safeName}",i]${websiteFilter}(around:${radius},${lat},${lng});`;
-    const query = `[out:json][timeout:40];(${union});out tags center qt ${Math.max(limit * 3, 150)};`;
+    const query = `[out:json][timeout:40];(${union});out tags center qt 400;`;
     log(`🔍 OSM custom search (name~"${category}", radius ${radius_km}km)...`);
     const data = await overpassQuery(query);
-    return parseElements(data, category, limit, log);
+    return parseElements(data, category, limit, log, lat, lng); // lat/lng → nearest-first
   }
 
   // Overpass's `out ... qt N` cap truncates SERVER-side in quadtile order — in a

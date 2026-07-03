@@ -296,8 +296,8 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
 const IG_RESERVED = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'about', 'help', 'legal', 'press', 'api', 'blog', 'developers', 'privacy', 'safety', 'support', 'directory', 'challenge', 'popular', 'web', 'emails', 'session']);
 
 async function enrichBusiness(business, location, country, log) {
+  // Works keyless — serper('/search') degrades to the free DDG/Bing engine.
   const apiKey = process.env.SERPER_API_KEY;
-  if (!apiKey) return business;
 
   log(`🔎 Enriching ${business.name}...`);
 
@@ -389,8 +389,8 @@ async function enrichBusiness(business, location, country, log) {
 // Detecting a real website here also correctly removes it from "no-website" runs.
 async function backfillWebsitePhone(business, city, country, log) {
   if (business.website && business.phone) return business;
+  // Works keyless — serper('/search') degrades to the free DDG/Bing engine.
   const apiKey = process.env.SERPER_API_KEY;
-  if (!apiKey) return business;
   const cc = getCountryCode(country);
   const nameCore = normalizeForMatch(business.name);
   const q = [cleanSearchName(business.name) || business.name, city, country].filter(Boolean).join(' ');

@@ -24,7 +24,10 @@ const {
   getCountryCode, cleanSearchName, trackCost,
 } = require('./util');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000, maxRetries: 0 });
+// Lazy client — constructing OpenAI() with no key THROWS, which would crash the
+// whole server at require() time when the key isn't configured.
+let _openai = null;
+const getOpenAI = () => (_openai ||= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 20000, maxRetries: 0 }));
 
 const TOOLS = [
   {
@@ -57,7 +60,7 @@ async function runTool(toolName, args, serperKey, country) {
   if (toolName === 'search_google') {
     const data = await withTimeout(
       serper('/search', { q: String(args.query || ''), gl: getCountryCode(country), hl: 'en', num: 5 }, serperKey, 8000),
-      8000, null
+      28000, null
     );
     if (!data) return 'Search timed out.';
     const kg = data.knowledgeGraph;
@@ -96,9 +99,10 @@ async function runTool(toolName, args, serperKey, country) {
 }
 
 async function findPhone({ name, city, country, website, instagramHandle }, log) {
+  // Only OpenAI is required — the search tool works keyless via the free engine.
   const serperKey = process.env.SERPER_API_KEY;
   const oaiKey = process.env.OPENAI_API_KEY;
-  if (!serperKey || !oaiKey || oaiKey === 'sk-paste-your-key-here') return null;
+  if (!oaiKey || oaiKey === 'sk-paste-your-key-here') return null;
 
   const sn = cleanSearchName(name);
   const loc = [city, country].filter(Boolean).join(', ');
@@ -136,7 +140,7 @@ After your research, output ONLY the phone number you saw, or NOT_FOUND. No othe
   for (let step = 0; step < 6; step++) {
     let resp;
     try {
-      resp = await openai.chat.completions.create({
+      resp = await getOpenAI().chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         messages,
         tools: TOOLS,
@@ -179,7 +183,7 @@ After your research, output ONLY the phone number you saw, or NOT_FOUND. No othe
         log(`📞 ${tc.function.name}(${JSON.stringify(args).slice(0, 80)})`);
         result = await withTimeout(
           runTool(tc.function.name, args, serperKey, country),
-          9000, 'Tool timed out.'
+          30000, 'Tool timed out.'
         );
         // Remember the digits we actually read, to corroborate the final answer.
         seenDigits += (result || '').replace(/\D/g, '');

@@ -24,7 +24,10 @@ const {
   normalizeForMatch, cleanUrl, extractEmail, trackCost,
 } = require('./util');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30000, maxRetries: 0 });
+// Lazy client - constructing OpenAI() with no key THROWS, which would crash the
+// whole server at require() time when the key is not configured.
+let _openai = null;
+const getOpenAI = () => (_openai ||= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30000, maxRetries: 0 }));
 // AI mode uses a FRONTIER model for human-level judgment (deciding which number
 // truly belongs to the business, rejecting switchboards/wrong-region numbers,
 // confirming the right Instagram). It auto-falls-back to the cheap model if the
@@ -67,7 +70,7 @@ async function renderedGet(url) {
   try { text = stripHtml(await httpGet(url, { timeoutMs: 7000, maxBytes: 120000 })); } catch {}
   if (text.length < 250) {
     try {
-      const r = await httpGet('https://r.jina.ai/' + url, { timeoutMs: 12000, maxBytes: 200000, headers: { 'X-Return-Format': 'text' } });
+      const r = await httpGet('https://r.jina.ai/' + url, { timeoutMs: 20000, maxBytes: 200000, headers: { 'X-Return-Format': 'text' } });
       if (r && r.length > text.length) text = r.replace(/\s+/g, ' ').trim();
     } catch {}
   }
@@ -76,7 +79,7 @@ async function renderedGet(url) {
 
 async function runTool(toolName, args, serperKey, country, log) {
   if (toolName === 'search_google') {
-    const data = await withTimeout(serper('/search', { q: String(args.query || ''), gl: getCountryCode(country), hl: 'en', num: 10 }, serperKey, 8000), 8000, null);
+    const data = await withTimeout(serper('/search', { q: String(args.query || ''), gl: getCountryCode(country), hl: 'en', num: 10 }, serperKey, 8000), 28000, null);
     if (!data) return 'Search timed out.';
     let out = '';
     const kg = data.knowledgeGraph;
@@ -87,7 +90,7 @@ async function runTool(toolName, args, serperKey, country, log) {
   if (toolName === 'open_page') {
     const url = String(args.url || '');
     if (!/^https?:\/\//i.test(url)) return 'Invalid URL — must start with http(s)://';
-    const text = await withTimeout(renderedGet(url), 14000, '');
+    const text = await withTimeout(renderedGet(url), 26000, '');
     return text || 'Page could not be read.';
   }
   return 'Unknown tool.';
@@ -128,9 +131,10 @@ function harvest(text, name, cc, store, srcIdx = 0) {
 }
 
 async function aiEnrich({ name, city, country, website, instagramHandle }, log) {
+  // Only OpenAI is required — the search tool works keyless via the free engine.
   const serperKey = process.env.SERPER_API_KEY;
   const oaiKey = process.env.OPENAI_API_KEY;
-  if (!serperKey || !oaiKey) return { phone: null, instagram: instagramHandle || null, website: website || null };
+  if (!oaiKey || oaiKey === 'sk-paste-your-key-here') return { phone: null, instagram: instagramHandle || null, tiktok: null, website: website || null };
 
   const cc = getCountryCode(country);
   const sn = cleanSearchName(name);
@@ -167,13 +171,13 @@ When finished, reply with ONLY this JSON (no prose):
     let resp;
     const callOpts = { messages, tools: TOOLS, tool_choice: step < 7 ? 'auto' : 'none', max_tokens: 350, temperature: 0.1 };
     try {
-      resp = await openai.chat.completions.create({ model, ...callOpts });
+      resp = await getOpenAI().chat.completions.create({ model, ...callOpts });
     } catch (e) {
       // Frontier model not accessible on this key → fall back to the cheap one.
       if (model !== AI_FALLBACK && /model|not.?found|does not exist|no access|unsupported|permission|invalid/i.test(e.message || '')) {
         if (log) log(`🤖 ${model} unavailable — using ${AI_FALLBACK}`);
         model = AI_FALLBACK;
-        try { resp = await openai.chat.completions.create({ model, ...callOpts }); }
+        try { resp = await getOpenAI().chat.completions.create({ model, ...callOpts }); }
         catch (e2) { if (log) log(`🤖 AI enrich error: ${e2.message}`); break; }
       } else { if (log) log(`🤖 AI enrich step ${step} error: ${e.message}`); break; }
     }
@@ -211,7 +215,7 @@ When finished, reply with ONLY this JSON (no prose):
       try {
         const args = JSON.parse(tc.function.arguments || '{}');
         if (log) log(`🤖 ${tc.function.name}(${JSON.stringify(args).slice(0, 70)})`);
-        result = await withTimeout(runTool(tc.function.name, args, serperKey, country, log), 15000, 'Tool timed out.');
+        result = await withTimeout(runTool(tc.function.name, args, serperKey, country, log), 32000, 'Tool timed out.');
       } catch (e) { result = `Error: ${e.message}`; }
       seenDigits += (result || '').replace(/\D/g, '');
       store._src = (store._src || 0) + 1;

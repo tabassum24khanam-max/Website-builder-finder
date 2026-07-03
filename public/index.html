@@ -1109,6 +1109,7 @@
                 <th>Phone</th>
                 <th>Email</th>
                 <th>Instagram</th>
+                <th>TikTok</th>
                 <th>LinkedIn</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -1269,6 +1270,51 @@ const state = {
   wsReconnectTimer: null,
   leadsView: 'table',
 };
+
+// ============================================================
+//  LEAD NORMALIZATION
+// ============================================================
+// Leads arrive with TWO naming conventions: WebSocket events use camelCase
+// (instagramHandle, aiScore, …) while REST/DB rows use snake_case
+// (instagram_handle, ai_score, …). Every lead entering state passes through
+// this bridge so BOTH names always exist — otherwise data that exists in the
+// DB silently renders as "–" (the "Instagram is there but doesn't show" bug).
+const LEAD_FIELD_MAP = [
+  ['instagram_handle', 'instagramHandle'], ['instagram_followers', 'instagramFollowers'],
+  ['instagram_posts', 'instagramPosts'], ['instagram_posts_per_month', 'instagramPostsPerMonth'],
+  ['instagram_last_post', 'instagramLastPost'], ['instagram_bio', 'instagramBio'],
+  ['instagram_url', 'instagramUrl'], ['tiktok_handle', 'tiktokHandle'], ['tiktok_url', 'tiktokUrl'],
+  ['website_status', 'websiteStatus'], ['website_summary', 'websiteSummary'],
+  ['ai_score', 'aiScore'], ['marketing_score', 'marketingScore'], ['ai_reasoning', 'aiReasoning'],
+  ['outreach_message', 'outreachMessage'], ['maps_url', 'mapsUrl'], ['photo_url', 'photoUrl'],
+  ['owner_phone', 'ownerPhone'], ['owner_email', 'ownerEmail'],
+  ['linkedin_company_url', 'linkedinCompanyUrl'], ['linkedin_owner_name', 'linkedinOwnerName'],
+  ['linkedin_owner_url', 'linkedinOwnerUrl'], ['review_count', 'reviewCount'],
+  ['search_id', 'searchId'],
+];
+function normalizeLead(l) {
+  if (!l || typeof l !== 'object') return l;
+  for (const [snake, camel] of LEAD_FIELD_MAP) {
+    if (l[snake] != null && l[camel] == null) l[camel] = l[snake];
+    else if (l[camel] != null && l[snake] == null) l[snake] = l[camel];
+  }
+  return l;
+}
+
+// Same bridge for search rows (History page): DB uses leads_found/created_at/
+// radius_km/limit_count, the UI reads leadsFound/createdAt/radius/count.
+const SEARCH_FIELD_MAP = [
+  ['leads_found', 'leadsFound'], ['created_at', 'createdAt'],
+  ['completed_at', 'completedAt'], ['radius_km', 'radius'], ['limit_count', 'count'],
+];
+function normalizeSearch(s) {
+  if (!s || typeof s !== 'object') return s;
+  for (const [snake, camel] of SEARCH_FIELD_MAP) {
+    if (s[snake] != null && s[camel] == null) s[camel] = s[snake];
+    else if (s[camel] != null && s[snake] == null) s[snake] = s[camel];
+  }
+  return s;
+}
 
 // ============================================================
 //  NAVIGATION
@@ -1454,7 +1500,7 @@ async function startSearch() {
     const res = await apiFetch('/api/searches', { method: 'POST', body: JSON.stringify(payload) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const search = data.search || data; // server replies { success, search } — unwrap it
+    const search = normalizeSearch(data.search || data); // server replies { success, search } — unwrap it
     state.activeSearchId = search.id || search._id;
     state.allSearches.unshift(search);
     appendLog('success', `Search started (ID: ${state.activeSearchId})`);
@@ -1480,6 +1526,7 @@ async function stopSearch() {
 
 function handleSearchStarted(search) {
   if (!search) return;
+  normalizeSearch(search);
   const id = search.id || search._id;
   state.activeSearchId = id;
   const existing = state.allSearches.findIndex(s => (s.id || s._id) === id);
@@ -1526,6 +1573,7 @@ function handleSearchStopped(searchId) {
 
 function handleLeadFound(lead) {
   if (!lead) return;
+  normalizeLead(lead);
   const id = lead.id || lead._id;
   const exists = state.allLeads.findIndex(l => (l.id || l._id) === id);
   if (exists >= 0) state.allLeads[exists] = lead;
@@ -1543,9 +1591,12 @@ function handleLeadFound(lead) {
 
 function handleLeadUpdated(lead) {
   if (!lead) return;
+  normalizeLead(lead);
   const id = lead.id || lead._id;
   const idx = state.allLeads.findIndex(l => (l.id || l._id) === id);
-  if (idx >= 0) state.allLeads[idx] = lead;
+  // Merge, don't replace — the broadcast row may lack transient fields
+  // (websiteSummary, searchId) the in-memory lead already carries.
+  if (idx >= 0) state.allLeads[idx] = { ...state.allLeads[idx], ...lead };
   else state.allLeads.unshift(lead);
   if (state.currentPage === 'all-leads') renderLeadsTable();
   updateBadge();
@@ -1716,8 +1767,9 @@ function renderLeadsTable() {
       </td>
       <td class="td-dim">${escHtml(lead.phone || '–')}</td>
       <td class="td-dim truncate" style="max-width:140px;">${lead.email ? `<a href="mailto:${escHtml(lead.email)}" onclick="event.stopPropagation()" style="color:var(--blue)">${escHtml(lead.email)}</a>` : '–'}</td>
-      <td class="td-dim">${lead.instagram || lead.instagramHandle ? `@${escHtml((lead.instagram||lead.instagramHandle).replace('@',''))}` : '–'}</td>
-      <td class="td-dim">${lead.linkedin ? `<a href="${escHtml(lead.linkedin)}" target="_blank" onclick="event.stopPropagation()" style="color:var(--blue)">Link</a>` : '–'}</td>
+      <td class="td-dim">${(() => { const h = lead.instagram || lead.instagramHandle || lead.instagram_handle; return h ? `@${escHtml(String(h).replace('@',''))}` : '–'; })()}</td>
+      <td class="td-dim">${(() => { const t = lead.tiktokHandle || lead.tiktok_handle; return t ? `🎵 @${escHtml(String(t).replace('@',''))}` : '–'; })()}</td>
+      <td class="td-dim">${(() => { const u = lead.linkedin || lead.linkedinCompanyUrl || lead.linkedin_company_url; return u ? `<a href="${escHtml(u)}" target="_blank" onclick="event.stopPropagation()" style="color:var(--blue)">Link</a>` : '–'; })()}</td>
       <td>${statusChipHtml(status)}</td>
       <td><div class="td-actions" onclick="event.stopPropagation()">
         <a class="btn btn-ghost btn-xs" href="${googleSearchUrl(lead)}" target="_blank" rel="noopener">🔎 Google</a>
@@ -1942,7 +1994,8 @@ async function saveLeadChanges() {
   const outreachMessage = document.getElementById('modal-outreach').value;
   const notes = document.getElementById('modal-notes').value;
 
-  const payload = { status, outreachMessage, notes };
+  // Server expects outreach_message (DB column name); send both for safety.
+  const payload = { status, outreach_message: outreachMessage, outreachMessage, notes };
   try {
     const res = await apiFetch(`/api/leads/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1988,7 +2041,7 @@ async function loadSearchHistory() {
     const res = await apiFetch('/api/searches');
     if (res.ok) {
       const data = await res.json();
-      state.allSearches = data;
+      state.allSearches = Array.isArray(data) ? data.map(normalizeSearch) : data;
     }
   } catch {}
   renderHistory();
@@ -2087,7 +2140,7 @@ async function openHistoryModal(searchId) {
     const res = await apiFetch(`/api/searches/${searchId}`);
     if (res.ok) {
       const data = await res.json();
-      if (data.leads && Array.isArray(data.leads)) leads = data.leads;
+      if (data.leads && Array.isArray(data.leads)) leads = data.leads.map(normalizeLead);
     }
   } catch {}
 
@@ -2155,13 +2208,15 @@ async function renderAnalytics() {
   const replied = leads.filter(l => l.status === 'replied').length;
 
   // Stat cards
-  const stats = serverStats || { total, noWebsite, score7, hasEmail, hasIg, contacted, converted };
+  // GET /api/stats returns snake_case keys (no_website, high_score, has_email,
+  // has_instagram) — read those, falling back to the locally computed numbers.
+  const stats = serverStats || {};
   const cards = [
     { label: 'Total Leads', value: stats.total ?? total, sub: 'all time', color: 'var(--text)' },
-    { label: 'No Website', value: stats.noWebsite ?? noWebsite, sub: 'hot prospects', color: 'var(--red)' },
-    { label: 'Score 7+', value: stats.score7 ?? score7, sub: 'high quality', color: 'var(--green)' },
-    { label: 'Has Email', value: stats.hasEmail ?? hasEmail, sub: 'contactable', color: 'var(--blue)' },
-    { label: 'Has Instagram', value: stats.hasIg ?? hasIg, sub: 'social active', color: 'var(--orange)' },
+    { label: 'No Website', value: stats.no_website ?? noWebsite, sub: 'hot prospects', color: 'var(--red)' },
+    { label: 'Score 7+', value: stats.high_score ?? score7, sub: 'high quality', color: 'var(--green)' },
+    { label: 'Has Email', value: stats.has_email ?? hasEmail, sub: 'contactable', color: 'var(--blue)' },
+    { label: 'Has Instagram', value: stats.has_instagram ?? hasIg, sub: 'social active', color: 'var(--orange)' },
     { label: 'Contacted', value: stats.contacted ?? contacted, sub: 'in pipeline', color: 'var(--amber)' },
     { label: 'Converted', value: stats.converted ?? converted, sub: 'won clients', color: 'var(--green)' },
   ];
@@ -2238,13 +2293,12 @@ async function renderAnalytics() {
 //  EXPORT
 // ============================================================
 function exportAll(format) {
-  // Export all leads (no specific searchId)
-  const ids = [...new Set(state.allLeads.map(l => l.searchId).filter(Boolean))];
-  if (ids.length === 0) {
+  if (!state.allLeads.length) {
     showToast('warn', '⚠️', 'No leads to export.');
     return;
   }
-  window.open(`/api/export/${ids[0]}/${format}`, '_blank');
+  // The server supports 'all' — exports EVERY lead, not just one search's.
+  window.open(`/api/export/all/${format}`, '_blank');
 }
 
 // ============================================================
@@ -2842,30 +2896,24 @@ async function init() {
     ]);
 
     if (searchRes.status === 'fulfilled' && searchRes.value.ok) {
-      state.allSearches = await searchRes.value.json();
+      const rows = await searchRes.value.json();
+      state.allSearches = Array.isArray(rows) ? rows.map(normalizeSearch) : rows;
     }
   } catch {}
 
-  // Try to load leads from search history
-  for (const search of state.allSearches.slice(0, 5)) {
-    const id = search.id || search._id;
-    try {
-      const res = await apiFetch(`/api/searches/${id}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.leads && Array.isArray(data.leads)) {
-          data.leads.forEach(lead => {
-            const lid = lead.id || lead._id;
-            if (!state.allLeads.find(l => (l.id || l._id) === lid)) {
-              state.allLeads.push({ ...lead, searchId: id });
-            }
-          });
-        }
-      }
-    } catch {}
-  }
+  // Load ALL saved leads in one call (snake_case DB rows → normalized so every
+  // field renders). The old per-search loop only loaded the last 5 searches,
+  // which made older leads invisible after a refresh.
+  try {
+    const res = await apiFetch('/api/leads');
+    if (res.ok) {
+      const rows = await res.json();
+      if (Array.isArray(rows)) state.allLeads = rows.map(normalizeLead);
+    }
+  } catch {}
 
   updateBadge();
+  if (state.currentPage === 'all-leads') renderLeadsTable();
 }
 
 init();
