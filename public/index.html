@@ -1674,6 +1674,99 @@ function googleSearchUrl(lead) {
   return 'https://www.google.com/search?q=' + encodeURIComponent([name, leadLocation(lead)].filter(Boolean).join(' '));
 }
 
+// ============================================================
+//  WEBSITE BUILD PROMPT
+// ============================================================
+// One big, copy-ready prompt per lead for an AI website builder: who the
+// business is, their real links (Instagram / TikTok / Google / Maps share),
+// "study them first", a color direction suited to the business type (their
+// actual brand colors win if Instagram shows one), and their Google reviews.
+const CATEGORY_PALETTES = [
+  [/cafe|coffee|roast|espresso|مقهى|قهوة/i, 'warm & cozy — espresso brown (#4B2E2B), cream (#F5EFE6), caramel accent (#C68B59); soft rounded corners, food photography large'],
+  [/restaurant|grill|kitchen|shawarma|pizza|burger|مطعم/i, 'appetizing & bold — charcoal (#1F1D1B), warm off-white (#FAF6F0), flame-orange or deep-red accent; hero food photo full-width'],
+  [/baker|pastry|dessert|sweet|حلويات/i, 'sweet & light — vanilla cream (#FFF8F0), blush pink (#F7CAD0), chocolate text (#5B3A29); playful rounded type'],
+  [/barber|حلاق/i, 'classic masculine — near-black (#141414), off-white, gold or barber-red accent; strong serif or condensed type'],
+  [/salon|beauty|nail|spa|صالون/i, 'elegant & airy — porcelain white, soft rose (#EAC7C7), muted gold accent; thin elegant type, lots of whitespace'],
+  [/gym|fitness|crossfit|نادي/i, 'high-energy — jet black, electric accent (lime #C6F432 or red), bold condensed uppercase type'],
+  [/dental|clinic|doctor|medical|عيادة|طب/i, 'clean & trustworthy — white, calm medical blue (#2D9CDB), mint accent (#7FD8BE); rounded friendly type, high whitespace'],
+  [/pharmacy|صيدلية/i, 'fresh & clinical — white, pharmacy green (#12A05C), soft grey; clear legible type'],
+  [/hotel|فندق/i, 'refined & calm — deep navy (#12263A), warm sand (#E8DCC8), brass accent; wide luxurious spacing'],
+  [/car|auto|garage|ورشة/i, 'industrial — dark slate (#20242B), safety-orange accent, metallic grey; rugged type'],
+  [/law|legal|محاماة/i, 'authoritative — deep navy or charcoal, ivory, restrained gold accent; classic serif headings'],
+];
+function paletteFor(category) {
+  const c = String(category || '');
+  for (const [re, p] of CATEGORY_PALETTES) if (re.test(c)) return p;
+  return 'clean modern — near-black text on white, one strong accent color drawn from their logo/photos; generous whitespace';
+}
+
+function buildWebsitePrompt(lead) {
+  const name = lead.businessName || lead.name || 'This business';
+  const category = lead.category || 'local business';
+  const city = leadLocation(lead) || '';
+  const address = lead.address || lead.fullAddress || '';
+  const phone = lead.phone || '';
+  const waDigits = phone ? phone.replace(/\D/g, '').replace(/^00/, '') : '';
+  const rating = lead.rating ? `${lead.rating}★` : '';
+  const reviews = (lead.review_count ?? lead.reviewCount) || 0;
+  const igHandle = (lead.instagram_handle || lead.instagramHandle || lead.instagram || '').replace('@', '');
+  const igUrl = lead.instagram_url || lead.instagramUrl || (igHandle ? `https://www.instagram.com/${igHandle}/` : '');
+  const ttHandle = (lead.tiktok_handle || lead.tiktokHandle || '').replace('@', '');
+  const ttUrl = lead.tiktok_url || lead.tiktokUrl || (ttHandle ? `https://www.tiktok.com/@${ttHandle}` : '');
+  const mapsUrl = lead.maps_url || lead.mapsUrl || lead.googleMapsUrl || '';
+  const gUrl = googleSearchUrl(lead);
+  const site = lead.website || '';
+  const arabic = /[؀-ۿ]/.test(name + address) || /saudi|riyadh|jeddah|السعودية/i.test(city + address);
+
+  const links = [
+    igUrl && `- Instagram: ${igUrl}`,
+    ttUrl && `- TikTok: ${ttUrl}`,
+    `- Google (their listing & reviews): ${gUrl}`,
+    mapsUrl && `- Google Maps (share link): ${mapsUrl}`,
+    site && `- Current website: ${site}`,
+  ].filter(Boolean).join('\n');
+
+  return `You are a senior web designer. Build a beautiful, modern, mobile-first one-page website for a REAL local business.
+
+THE BUSINESS
+- Name: ${name}
+- What they are: ${category}${city ? ` in ${city}` : ''}${address ? `\n- Address: ${address}` : ''}${phone ? `\n- Phone: ${phone}` : ''}${rating ? `\n- Google rating: ${rating}${reviews ? ` from ${reviews} reviews` : ''}` : ''}
+${links}
+
+STEP 1 — RESEARCH THEM FIRST (do this before designing anything)
+Open the links above and study this business like a designer visiting in person: their photos, menu/services, prices, vibe, how they talk to customers, and what reviewers praise most. ${igUrl ? 'Their Instagram is the best window into their real brand — note the colors, style and their best photos. ' : ''}Build on what THEY are, not a generic template.
+
+STEP 2 — DESIGN DIRECTION
+- They are a ${category}, so default color scheme: ${paletteFor(category)}.
+- BUT: if their Instagram/photos show a clear existing brand palette (logo, cup design, interior), use THEIR colors instead — the site must feel like it belongs to them.
+- Photography-first layout; use placeholders labeled with which of their real photos to drop in.
+
+STEP 3 — SECTIONS TO BUILD (one page, top to bottom)
+1. Hero — name, one-line tagline that matches their vibe, ${rating ? `the ${rating} Google rating badge, ` : ''}and big action buttons: “Call now”${waDigits ? ' + “WhatsApp”' : ''} + “Get directions”.
+2. About — 2-3 warm sentences about who they are (write from what you learned in Step 1).
+3. ${/cafe|restaurant|baker|مطعم|مقهى/i.test(category) ? 'Menu highlights — 4-6 signature items with short mouth-watering descriptions.' : 'Services — their 4-6 main services with short benefit-led descriptions.'}
+4. Reviews — feature ${rating ? `the ${rating}${reviews ? ` (${reviews} Google reviews)` : ''}` : 'their Google rating'} prominently, and pull 2-3 REAL short review quotes from the Google link above (use reviewers' first names only).
+5. Gallery — 4-6 photo slots${igUrl ? ' (source from their Instagram)' : ''}.
+6. Location & hours — embedded Google map${mapsUrl ? ` (${mapsUrl})` : ''}, address, opening hours.
+7. Footer — phone (tap-to-call tel: link)${waDigits ? `, WhatsApp (https://wa.me/${waDigits})` : ''}${igUrl ? ', Instagram' : ''}${ttUrl ? ', TikTok' : ''}, address.
+
+REQUIREMENTS
+- Mobile-first and fast; semantic HTML; large tap targets for call/WhatsApp.
+- SEO: title “${name} — ${category}${city ? ` in ${city}` : ''}”, meta description from the About text, LocalBusiness JSON-LD (name, phone, address, rating).
+${arabic ? '- Bilingual-ready: include Arabic (RTL) support alongside English.\n' : ''}- No stock-photo clichés and no lorem ipsum — every word should sound like it was written for ${name} specifically.
+
+Check them out for yourself first. Then build on this.`;
+}
+
+function copyBuildPrompt() {
+  const el = document.getElementById('modal-buildprompt');
+  if (!el) return;
+  navigator.clipboard.writeText(el.value).then(
+    () => showToast('success', '📋', 'Website build prompt copied.'),
+    () => { el.select(); document.execCommand('copy'); showToast('success', '📋', 'Website build prompt copied.'); }
+  );
+}
+
 function buildLeadCard(lead) {
   const id = lead.id || lead._id;
   const name = lead.businessName || lead.name || 'Unknown';
@@ -1943,6 +2036,18 @@ function openLeadModal(id) {
         <div class="outreach-actions">
           <button class="btn btn-ghost btn-sm" onclick="copyOutreach()">📋 Copy</button>
           <span style="font-size:12px;color:var(--text-muted);align-self:center">Edit to customize</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Website build prompt — paste into any AI builder to make their site -->
+    <div>
+      <div class="section-label">🏗️ Website Build Prompt</div>
+      <div class="outreach-wrap">
+        <textarea id="modal-buildprompt" rows="12" readonly style="font-size:12px;line-height:1.5;">${escHtml(buildWebsitePrompt(lead))}</textarea>
+        <div class="outreach-actions">
+          <button class="btn btn-amber btn-sm" onclick="copyBuildPrompt()">📋 Copy Prompt</button>
+          <span style="font-size:12px;color:var(--text-muted);align-self:center">Paste into Claude / any AI website builder — it researches them via the links, then builds in their colors</span>
         </div>
       </div>
     </div>
