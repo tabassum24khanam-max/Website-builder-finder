@@ -253,7 +253,14 @@ function isValidPhone(raw, cc) {
   switch (cc) {
     case 'sa': return (nat.length === 9 && /^[1-9]/.test(nat)) || /^800\d{6,7}$/.test(nat);
     case 'ae': return nat.length >= 8 && nat.length <= 9 && /^[1-9]/.test(nat);
-    case 'us': case 'ca': return /^[2-9]\d{2}[2-9]\d{6}$/.test(nat); // NANP: area 2-9, exchange 2-9
+    case 'us': case 'ca': {
+      // NANP numbers NEVER start with 0 — but toNational strips leading zeros,
+      // which let zip-glued artifacts ("07302 - 551-244…") masquerade as valid.
+      // Validate on the raw digit string (optionally 1-prefixed), not the
+      // zero-stripped form.
+      const d = String(raw).replace(/\D/g, '');
+      return /^1?[2-9]\d{2}[2-9]\d{6}$/.test(d);
+    }
     case 'gb': return /^[1-9]\d{8,9}$/.test(nat);
     case 'fr': return /^[1-9]\d{8}$/.test(nat);
     case 'de': return /^1[5-7]\d{8,9}$/.test(nat) || /^[2-9]\d{5,9}$/.test(nat); // mobile 15/16/17, else area code

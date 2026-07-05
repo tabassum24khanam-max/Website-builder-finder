@@ -78,6 +78,12 @@ const IG_STOPWORDS = new Set([
   'coffee', 'cafe', 'cafes', 'café', 'roastery', 'roasters', 'roaster', 'specialty',
   'speciality', 'espresso', 'tea', 'restaurant', 'shop', 'bar', 'house', 'the', 'and',
   'co', 'company', 'riyadh', 'jeddah', 'saudi', 'arabia', 'sa',
+  // industry + geo generics — a match on these proves NOTHING about identity
+  // (the "Lavi Nails" → @novanailsmadison bug: "nails" matched a different salon)
+  'nails', 'nail', 'salon', 'salons', 'studio', 'hair', 'beauty', 'barber', 'barbershop',
+  'lash', 'lashes', 'brows', 'dental', 'dentist', 'dentistry', 'clinic', 'medical', 'doctor',
+  'pizza', 'pizzeria', 'grill', 'kitchen', 'bakery', 'deli', 'eatery', 'diner', 'lounge',
+  'city', 'jersey', 'york', 'downtown', 'street', 'avenue', 'group', 'center', 'centre',
   'قهوة', 'مقهى', 'كافيه', 'كوفي', 'مختصة', 'مختص', 'محمصة', 'شاي', 'مطعم', 'الرياض', 'جدة', 'السعودية', 'حي', 'روست',
 ]);
 

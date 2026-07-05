@@ -105,7 +105,10 @@ function looksLikeOwnSite(url, name) {
     const host = new URL(url).hostname.replace(/^www\./, '');
     const hc = host.replace(/\.[a-z.]+$/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
     const nc = normalizeForMatch(name);
-    return nc.length >= 4 && (hc.includes(nc.slice(0, 6)) || nc.includes(hc.slice(0, 6)));
+    // Reverse containment (name ⊃ host) needs a LONG host core — a 5-char host
+    // like "boots" matching inside "bootsbonesbbq" gave Boots&Bones BBQ the UK
+    // pharmacy's site. Forward containment keeps the 6-char probe.
+    return nc.length >= 4 && (hc.includes(nc.slice(0, 6)) || (hc.length >= 6 && nc.includes(hc.slice(0, 6))));
   } catch { return false; }
 }
 
