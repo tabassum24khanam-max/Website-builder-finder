@@ -101,9 +101,45 @@ async function searchOnce(engineUrl) {
   return parseMarkdownResults(body);
 }
 
-// Public API — Serper-shaped result. Tries DDG, then Bing, with one retry each
-// (429s happen on the keyless tier).
+// ── DIRECT DuckDuckGo (no proxy) ─────────────────────────────────────────────
+// html.duckduckgo.com often answers datacenter IPs directly (its blocking is
+// intermittent). When it does, it's the best engine we have: fast, no third
+// party, no shared rate cap. Tried FIRST; jina engines remain the fallback.
+let _ddgLast = 0;
+async function ddgDirect(query) {
+  const wait = _ddgLast + 1200 - Date.now();
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  _ddgLast = Date.now();
+  const { status, body } = await get(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=us-en`, 12000);
+  if (status !== 200 || !body || !/result__a/.test(body)) throw new Error(`ddg ${status}`);
+  const out = [];
+  // <a rel="nofollow" class="result__a" href="...">Title</a> … snippet in
+  // .result__snippet; hrefs are //duckduckgo.com/l/?uddg= redirects.
+  const linkRe = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  const snipRe = /class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|td|div)>/g;
+  const links = [...body.matchAll(linkRe)];
+  const snips = [...body.matchAll(snipRe)];
+  const strip = s => s.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#x?\w+;/g, ' ').replace(/\s+/g, ' ').trim();
+  for (let i = 0; i < links.length; i++) {
+    const href = links[i][1].startsWith('//') ? 'https:' + links[i][1] : links[i][1];
+    const link = cleanLink(href);
+    if (!link || SKIP_HOSTS.test(link)) continue;
+    if (out.some(r => r.link === link)) continue;
+    out.push({ title: strip(links[i][2]).slice(0, 200), link, snippet: strip((snips[i] || [])[1] || '').slice(0, 300) });
+  }
+  if (!out.length) throw new Error('ddg parsed 0');
+  return out;
+}
+
+// Public API — Serper-shaped result. Engine order: DIRECT DuckDuckGo (fastest,
+// no shared cap), then DDG and Bing through the jina proxy, one retry each.
 async function freeSearch(query, { num = 10 } = {}) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const organic = await ddgDirect(query);
+      if (organic.length) return { organic: organic.slice(0, num), source: 'ddg-direct' };
+    } catch { if (attempt === 0) await new Promise(r => setTimeout(r, 3000)); }
+  }
   const q = encodeURIComponent(query);
   const engines = [
     `https://html.duckduckgo.com/html/?q=${q}&kl=us-en`,
