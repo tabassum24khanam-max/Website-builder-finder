@@ -411,7 +411,9 @@ async function backfillWebsitePhone(business, city, country, log) {
         const host = new URL(link).hostname.replace(/^www\./, '');
         const hostCore = host.replace(/\.[a-z.]+$/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
         const core = nameCore.slice(0, Math.min(6, nameCore.length));
-        if (nameCore.length >= 4 && (hostCore.includes(core) || nameCore.includes(hostCore.slice(0, Math.min(6, hostCore.length))))) {
+        // Reverse containment (name ⊃ host) needs a ≥6-char host core — a short
+        // host like "boots" inside "bootsbonesbbq" is a different business.
+        if (nameCore.length >= 4 && (hostCore.includes(core) || (hostCore.length >= 6 && nameCore.includes(hostCore.slice(0, 6))))) {
           business.website = cleanUrl(link);
         }
       } catch {}
