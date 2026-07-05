@@ -70,15 +70,22 @@ function parseMarkdownResults(md) {
   return out;
 }
 
-// Global min-interval throttle: the keyless r.jina.ai tier allows ~20 req/min.
-// A full search fires dozens of lookups (enrich + Instagram + TikTok + backfill
-// + phone agent per business); without pacing they 429 and fields come back
-// empty. All calls are serialized ≥3s apart.
+// Global ADAPTIVE throttle: the keyless r.jina.ai tier rate-limits (~20/min
+// sustained), but bursts often pass. A fixed 3s gap starves concurrent searches
+// (every step waits behind the whole queue until its timeout kills it). So:
+// start fast (1.5s), double the gap only when jina actually answers 429 (up to
+// 6s), and shrink back after a streak of successes.
 let _lastCall = 0;
 let _chain = Promise.resolve();
+let _gapMs = 1500;
+let _okStreak = 0;
+function noteResult(status) {
+  if (status === 429) { _gapMs = Math.min(6000, _gapMs * 2); _okStreak = 0; }
+  else if (status === 200 && ++_okStreak >= 4) { _gapMs = Math.max(1200, Math.round(_gapMs * 0.75)); _okStreak = 0; }
+}
 function throttled(fn) {
   const run = _chain.then(async () => {
-    const wait = _lastCall + 3000 - Date.now();
+    const wait = _lastCall + _gapMs - Date.now();
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
     _lastCall = Date.now();
     return fn();
@@ -89,6 +96,7 @@ function throttled(fn) {
 
 async function searchOnce(engineUrl) {
   const { status, body } = await throttled(() => get('https://r.jina.ai/' + engineUrl));
+  noteResult(status);
   if (status !== 200 || !body) throw new Error(`jina ${status}`);
   return parseMarkdownResults(body);
 }
