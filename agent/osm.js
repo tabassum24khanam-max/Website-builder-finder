@@ -16,6 +16,33 @@ const CATEGORY_TAGS = {
   'Law Offices':  [['office', 'lawyer']],
 };
 
+// Natural phrasings → canonical CATEGORY_TAGS key. The UI chips send the
+// Title-case keys, but the custom-category box (and API callers) send things
+// like "cafes", "coffee shops", "nail salons" — without this they'd fall into
+// a literal name~"..." search and return nothing useful.
+const CATEGORY_ALIASES = {
+  'Cafes': ['cafe', 'cafes', 'café', 'cafés', 'coffee', 'coffee shop', 'coffee shops', 'coffeehouse', 'coffee house', 'specialty coffee'],
+  'Restaurants': ['restaurant', 'restaurants', 'diner', 'diners', 'eatery', 'eateries', 'fast food', 'places to eat'],
+  'Barbershops': ['barber', 'barbers', 'barbershop', 'barbershops', 'barber shop', 'barber shops', 'hairdresser', 'hairdressers', 'hair salon', 'hair salons'],
+  'Salons': ['salon', 'salons', 'beauty salon', 'beauty salons', 'nail salon', 'nail salons', 'nails', 'spa', 'spas', 'beauty'],
+  'Clinics': ['clinic', 'clinics', 'doctor', 'doctors', 'medical clinic', 'medical clinics'],
+  'Gyms': ['gym', 'gyms', 'fitness', 'fitness center', 'fitness centers', 'fitness centre', 'fitness centres'],
+  'Bakeries': ['bakery', 'bakeries', 'pastry', 'pastries', 'pastry shop', 'pastry shops'],
+  'Pharmacies': ['pharmacy', 'pharmacies', 'drugstore', 'drug store', 'drug stores', 'chemist'],
+  'Dental': ['dental', 'dentist', 'dentists', 'dental clinic', 'dental clinics', 'dentistry', 'orthodontist', 'orthodontists'],
+  'Hotels': ['hotel', 'hotels', 'motel', 'motels', 'guest house', 'guest houses', 'guesthouse'],
+  'Car Repair': ['car repair', 'auto repair', 'mechanic', 'mechanics', 'auto shop', 'auto shops', 'car workshop'],
+  'Law Offices': ['law office', 'law offices', 'lawyer', 'lawyers', 'attorney', 'attorneys', 'law firm', 'law firms', 'legal services'],
+};
+const CATEGORY_LOOKUP = new Map();
+for (const key of Object.keys(CATEGORY_TAGS)) CATEGORY_LOOKUP.set(key.toLowerCase(), key);
+for (const [key, aliases] of Object.entries(CATEGORY_ALIASES)) for (const a of aliases) CATEGORY_LOOKUP.set(a, key);
+
+function resolveCategoryKey(category) {
+  const c = String(category || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return CATEGORY_LOOKUP.get(c) || null;
+}
+
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
@@ -119,9 +146,11 @@ async function findBusinessesOSM({ category, location, country, lat, lng, radius
 
   const radius = Math.round(radius_km * 1000);
 
-  // 2. Resolve tag pairs for the category
-  let tagPairs = CATEGORY_TAGS[category];
+  // 2. Resolve tag pairs for the category (case/plural/alias tolerant)
+  const canonicalKey = resolveCategoryKey(category);
+  let tagPairs = canonicalKey ? CATEGORY_TAGS[canonicalKey] : null;
   const isKnownCategory = !!tagPairs;
+  if (canonicalKey && canonicalKey !== category) log(`🏷️ Category "${category}" → ${canonicalKey}`);
 
   if (!tagPairs) {
     // Custom category — search by name match
