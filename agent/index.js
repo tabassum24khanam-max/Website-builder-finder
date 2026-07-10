@@ -137,6 +137,7 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
   let ig = { handle: null, followers: null, posts: null, postsPerMonth: null, lastPost: null, bio: null, phoneFromBio: null, emailFromBio: null, url: null };
   let tiktok = { handle: null, url: null };
 
+  let aiCovered = false;
   if (aiMode && !biz.fromPlaces) {
     // ── AI MODE: a human-like research agent finds phone + Instagram + website by
     //    searching Google and READING pages (the business site, delivery apps,
@@ -151,10 +152,16 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
       if (r.instagram) { ig.handle = r.instagram; ig.url = `https://www.instagram.com/${r.instagram}/`; }
       if (r.tiktok) { tiktok = { handle: r.tiktok, url: `https://www.tiktok.com/@${r.tiktok}` }; }
     }
+    // Only trust AI mode when it actually produced contact info. A dead/quota'd
+    // OpenAI key (or a total miss) must degrade to the normal pipeline, not
+    // save a near-empty lead.
+    aiCovered = !!(biz.phone || ig.handle);
+    if (!aiCovered) log('🤖 AI research came back empty — running standard enrichment…');
     if (ig.handle) log(`📸 @${ig.handle}`);
     if (tiktok.handle) log(`🎵 @${tiktok.handle}`);
     if (biz.phone) log(`📞 ${biz.phone}`);
-  } else {
+  }
+  if (!aiCovered) {
     // ── SERPER MODE (default) ──────────────────────────────────────────────────
     // 1 — enrich (Places-discovered businesses already have authoritative data).
     if (!biz.fromPlaces) {
