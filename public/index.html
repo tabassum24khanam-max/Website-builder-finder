@@ -1706,7 +1706,10 @@ function buildWebsitePrompt(lead) {
   const city = leadLocation(lead) || '';
   const address = lead.address || lead.fullAddress || '';
   const phone = lead.phone || '';
-  const waDigits = phone ? phone.replace(/\D/g, '').replace(/^00/, '') : '';
+  // wa.me links only work with a full international number (+country code);
+  // for local-format numbers we tell the builder to convert instead of
+  // emitting a dead link.
+  const waDigits = /^\s*(\+|00)/.test(phone) ? phone.replace(/\D/g, '').replace(/^00/, '') : '';
   const rating = lead.rating ? `${lead.rating}★` : '';
   const reviews = (lead.review_count ?? lead.reviewCount) || 0;
   const igHandle = (lead.instagram_handle || lead.instagramHandle || lead.instagram || '').replace('@', '');
@@ -1727,6 +1730,7 @@ function buildWebsitePrompt(lead) {
   ].filter(Boolean).join('\n');
 
   return `You are a senior web designer. Build a beautiful, modern, mobile-first one-page website for a REAL local business.
+(This prompt is universal — it works as-is in Claude, Lovable, Replit, Bolt, v0 or any AI website builder. Use whatever stack this tool builds by default; a single-page site is the goal.)
 
 THE BUSINESS
 - Name: ${name}
@@ -1742,16 +1746,20 @@ STEP 2 — DESIGN DIRECTION
 - Photography-first layout; use placeholders labeled with which of their real photos to drop in.
 
 STEP 3 — SECTIONS TO BUILD (one page, top to bottom)
-1. Hero — name, one-line tagline that matches their vibe, ${rating ? `the ${rating} Google rating badge, ` : ''}and big action buttons: “Call now”${waDigits ? ' + “WhatsApp”' : ''} + “Get directions”.
+1. Hero — name, one-line tagline that matches their vibe, ${rating ? `the ${rating} Google rating badge, ` : ''}and big action buttons: “Call now”${phone ? ' + “WhatsApp”' : ''} + “Get directions”.
 2. About — 2-3 warm sentences about who they are (write from what you learned in Step 1).
-3. ${/cafe|restaurant|baker|مطعم|مقهى/i.test(category) ? 'Menu highlights — 4-6 signature items with short mouth-watering descriptions.' : 'Services — their 4-6 main services with short benefit-led descriptions.'}
+3. ${/cafe|restaurant|baker|pizza|deli|food|مطعم|مقهى/i.test(category)
+      ? 'Menu — an EXPANDABLE menu: group items by category (e.g. Coffee / Food / Desserts or Starters / Mains / Drinks). Show 4-6 signature items open by default; every other category collapses behind a tap-to-expand header (accordion). Each item: name, one-line description, price placeholder. Source real items from their Instagram/Google photos where possible.'
+      : 'Services — an EXPANDABLE services list: the 4-6 main services visible with benefit-led one-liners; details (scope, duration, from-price) expand on tap (accordion).'}
 4. Reviews — feature ${rating ? `the ${rating}${reviews ? ` (${reviews} Google reviews)` : ''}` : 'their Google rating'} prominently, and pull 2-3 REAL short review quotes from the Google link above (use reviewers' first names only).
 5. Gallery — 4-6 photo slots${igUrl ? ' (source from their Instagram)' : ''}.
 6. Location & hours — embedded Google map${mapsUrl ? ` (${mapsUrl})` : ''}, address, opening hours.
-7. Footer — phone (tap-to-call tel: link)${waDigits ? `, WhatsApp (https://wa.me/${waDigits})` : ''}${igUrl ? ', Instagram' : ''}${ttUrl ? ', TikTok' : ''}, address.
+7. Footer — phone (tap-to-call tel: link)${waDigits ? `, WhatsApp (https://wa.me/${waDigits})` : phone ? ', WhatsApp (wa.me link — convert the phone above to international format first)' : ''}${igUrl ? ', Instagram' : ''}${ttUrl ? ', TikTok' : ''}, address.
 
 REQUIREMENTS
 - Mobile-first and fast; semantic HTML; large tap targets for call/WhatsApp.
+- Social links are NOT optional: ${igUrl ? `a visible “Follow on Instagram” button (${igUrl})` : 'social buttons for any profiles you find in Step 1'}${ttUrl ? ` and a TikTok button (${ttUrl})` : ''} must appear in the page body AND the footer.
+- The map + address live at the BOTTOM of the page (Location section just above the footer).
 - SEO: title “${name} — ${category}${city ? ` in ${city}` : ''}”, meta description from the About text, LocalBusiness JSON-LD (name, phone, address, rating).
 ${arabic ? '- Bilingual-ready: include Arabic (RTL) support alongside English.\n' : ''}- No stock-photo clichés and no lorem ipsum — every word should sound like it was written for ${name} specifically.
 
