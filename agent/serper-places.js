@@ -47,6 +47,18 @@ function isChain(name) {
   return false;
 }
 
+// A "business" whose ENTIRE name is contained in the searched area label is a
+// map label, not a business — Serper Places sometimes returns the street or
+// station itself ("Grove St" for a Grove Street PATH search). Left in, it gets
+// enriched with whatever random phone/Instagram happens to mention that street.
+function isAreaEcho(name, areaText) {
+  const norm = s => String(s || '').toLowerCase()
+    .replace(/\bstreet\b/g, 'st').replace(/\bavenue\b/g, 'ave').replace(/\broad\b/g, 'rd')
+    .replace(/[^a-z0-9؀-ۿ]+/g, '');
+  const n = norm(name), a = norm(areaText);
+  return !!n && n.length >= 2 && a.includes(n);
+}
+
 // ── AI query variant generation ──────────────────────────────────────────────
 // Puts the neighborhood directly into `q` (the Serper `location` param ignores
 // sub-city areas) and varies the wording for coverage. Never a bare zip alone.
@@ -217,6 +229,7 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
         seen.set(key, true);
 
         if (isChain(name)) { log(`⏭️  Chain/listing skipped: ${name}`); continue; }
+        if (isAreaEcho(name, `${neighborhood || ''} ${zip || ''} ${city || ''} ${country || ''}`)) { log(`⏭️  Map label skipped: ${name}`); continue; }
 
         // Collect everything (with coords). The locality filter is applied ONCE
         // at the end, against a centre we trust — so a wrong geocode can never
@@ -430,4 +443,4 @@ async function backfillWebsitePhone(business, city, country, log) {
   return business;
 }
 
-module.exports = { findBusinessesSerper, enrichBusiness, backfillWebsitePhone, isChain };
+module.exports = { findBusinessesSerper, enrichBusiness, backfillWebsitePhone, isChain, isAreaEcho };

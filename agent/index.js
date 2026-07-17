@@ -10,7 +10,7 @@
 //   6. email               → IG bio / website / Hunter
 //   7. phone cascade + AI score + save (skip chains & zero-contact leads)
 
-const { findBusinessesSerper, enrichBusiness, backfillWebsitePhone, isChain } = require('./serper-places');
+const { findBusinessesSerper, enrichBusiness, backfillWebsitePhone, isChain, isAreaEcho } = require('./serper-places');
 const { findBusinessesPlaces } = require('./places-api');
 const { findBusinessesOSM } = require('./osm');
 const { findInstagram } = require('./instagram');
@@ -120,7 +120,11 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
   try {
     const loc = [neighborhood, city].filter(Boolean).join(', ') || zip || city;
     const raw = await findBusinessesOSM({ category, location: loc, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: (limit_count || 30) * 2, noWebsiteOnly: false, log });
-    const b = raw.filter(x => { const c = isChain(x.name); if (c) log(`⏭️  Chain skipped: ${x.name}`); return !c; }).slice(0, limit_count || 30);
+    const b = raw.filter(x => {
+      if (isChain(x.name)) { log(`⏭️  Chain skipped: ${x.name}`); return false; }
+      if (isAreaEcho(x.name, `${neighborhood || ''} ${zip || ''} ${city || ''} ${country || ''}`)) { log(`⏭️  Map label skipped: ${x.name}`); return false; }
+      return true;
+    }).slice(0, limit_count || 30);
     if (b.length) return tag(b);
   } catch (e) { log(`⚠️  OpenStreetMap also failed: ${e.message}`, 'warn'); }
 
