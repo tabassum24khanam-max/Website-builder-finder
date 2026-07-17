@@ -52,6 +52,14 @@ app.get('/api/resolve-location', async (req, res) => {
     const { resolveLocation } = require('./agent/locate');
     const r = await resolveLocation({ q: req.query.q, city: req.query.city, country: req.query.country });
     if (!r) return res.status(404).json({ error: 'Could not read a location from that link or code.' });
+    // Reverse-geocode the point so the UI can fill City/Street/Zip to match the
+    // pin — otherwise the form fields stay stale and (worse) the search queries
+    // get built from the wrong area text.
+    try {
+      const { reverseGeocode } = require('./agent/osm');
+      const rev = await reverseGeocode(r.lat, r.lng);
+      if (rev) Object.assign(r, { city: rev.city || null, neighborhood: rev.neighborhood || null, zip: rev.zip || null, country: rev.country || null });
+    } catch {}
     res.json(r);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

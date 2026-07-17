@@ -20,7 +20,7 @@ const {
   serper, httpGet, withTimeout,
   bestPhone, pickPhone, isValidPhone, isStrongPhone,
   verifyHandle, getCountryCode, cleanSearchName, isSocialOrDirectory,
-  normalizeForMatch, cleanUrl, extractEmail, trackCost,
+  normalizeForMatch, cleanUrl, extractEmail, trackCost, tldCountryConflict,
 } = require('./util');
 // AI mode wants the provider's most capable tool-use model (getAI 'deep'):
 // human-level judgment for deciding which number truly belongs to the business,
@@ -91,10 +91,13 @@ async function runTool(toolName, args, serperKey, country, log) {
 }
 
 // A URL is the business's OWN website only if it isn't a social/directory/QR
-// page AND its domain matches the business name. This rejects QR shortlinks
-// (uqr.to) and directory pages (dlilsa.com) the AI might mistake for a website.
-function looksLikeOwnSite(url, name) {
+// page AND its domain matches the business name AND its ccTLD doesn't belong
+// to a different country (a Riyadh cafe never owns wisdom-cafe.com.au — that's
+// a same-named business abroad). Rejects QR shortlinks (uqr.to) and directory
+// pages (dlilsa.com) the AI might mistake for a website too.
+function looksLikeOwnSite(url, name, cc) {
   if (!url || isSocialOrDirectory(url)) return false;
+  if (cc && tldCountryConflict(url, cc)) return false;
   try {
     const host = new URL(url).hostname.replace(/^www\./, '');
     const hc = host.replace(/\.[a-z.]+$/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -122,7 +125,7 @@ function harvest(text, name, cc, store, srcIdx = 0) {
   }
   if (!store.site) {
     for (const m of text.matchAll(/https?:\/\/[^\s"'<>]+/gi)) {
-      if (looksLikeOwnSite(m[0], name)) { store.site = cleanUrl(m[0]); break; }
+      if (looksLikeOwnSite(m[0], name, cc)) { store.site = cleanUrl(m[0]); break; }
     }
   }
 }
@@ -201,7 +204,7 @@ When finished, reply with ONLY this JSON (no prose):
             const h = String(j.tiktok).replace(/^@/, '').replace(/.*tiktok\.com\/@?/, '').replace(/\/.*$/, '');
             if (h && verifyHandle(h, name)) store.tt = h;
           }
-          if (j.website && !store.site && looksLikeOwnSite(j.website, name)) store.site = cleanUrl(j.website);
+          if (j.website && !store.site && looksLikeOwnSite(j.website, name, cc)) store.site = cleanUrl(j.website);
         } catch {}
       }
       break;

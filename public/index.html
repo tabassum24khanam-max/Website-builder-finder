@@ -1443,6 +1443,21 @@ document.getElementById('custom-category').addEventListener('input', () => {
 // ============================================================
 //  SEARCH
 // ============================================================
+// Apply a resolved location everywhere at once: drop the pin AND sync the
+// City/Street/Zip/Country fields to what's actually AT that point. Without the
+// field sync the form keeps stale text, the map re-renders from it ("snaps
+// back"), and the search queries get built for the wrong area.
+function applyResolvedLocation(r) {
+  const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+  set('location-input', r.city);
+  set('street-input', r.neighborhood);
+  set('zip-input', r.zip);
+  set('country-input', r.country);
+  if (typeof setPickerLocation === 'function') setPickerLocation(r.lat, r.lng, r.label);
+  const parts = [r.neighborhood, r.city].filter(Boolean).join(', ');
+  return parts || r.label || `${(+r.lat).toFixed(4)}, ${(+r.lng).toFixed(4)}`;
+}
+
 // Resolve a pasted Google Maps link / Plus Code / lat,lng → drop the search pin there.
 async function resolvePastedLocation() {
   const q = (document.getElementById('location-link').value || '').trim();
@@ -1455,9 +1470,9 @@ async function resolvePastedLocation() {
     const res = await apiFetch(`/api/resolve-location?q=${encodeURIComponent(q)}&city=${encodeURIComponent(city)}&country=${encodeURIComponent(country)}`);
     if (!res.ok) throw new Error(((await res.json().catch(() => ({}))).error) || 'Could not read that.');
     const r = await res.json();
-    if (typeof setPickerLocation === 'function') setPickerLocation(r.lat, r.lng, r.label);
-    if (statusEl) statusEl.innerHTML = `✅ Set to <strong>${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}</strong> (${escHtml(r.label)}) — the search will start here.`;
-    if (typeof showToast === 'function') showToast('success', '📍', `Location set from ${r.label}.`);
+    const where = applyResolvedLocation(r);
+    if (statusEl) statusEl.innerHTML = `✅ Set to <strong>${escHtml(where)}</strong> (${r.lat.toFixed(5)}, ${r.lng.toFixed(5)}) — the search will start here.`;
+    if (typeof showToast === 'function') showToast('success', '📍', `Location set: ${where}.`);
   } catch (e) {
     if (statusEl) statusEl.textContent = '⚠️ ' + (e.message || 'Could not read that link or code.');
   }
@@ -2578,21 +2593,16 @@ async function useCurrentLocation() {
   navigator.geolocation.getCurrentPosition(async pos => {
     try {
       const { latitude: lat, longitude: lng } = pos.coords;
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, { headers: { 'Accept-Language': 'en' } });
-      const data = await res.json();
-      const addr = data.address || {};
-      const city = addr.city || addr.town || addr.village || addr.county || data.display_name.split(',')[0];
-      const country = addr.country || '';
-      const zip = addr.postcode || '';
-      document.getElementById('location-input').value = city;
-      if (country && !document.getElementById('country-input').value.trim()) {
-        document.getElementById('country-input').value = country;
-      }
-      if (zip && !document.getElementById('zip-input').value.trim()) {
-        document.getElementById('zip-input').value = zip;
-      }
-      setPickerLocation(lat, lng, city);
-      showToast('success', '📍', `Location set to ${city}`);
+      // Server-side resolve: reverse geocodes with a neighborhood-aware chain
+      // (Nominatim → BigDataCloud) and returns city/neighborhood/zip/country.
+      let r = null;
+      try {
+        const res = await apiFetch(`/api/resolve-location?q=${encodeURIComponent(lat + ',' + lng)}`);
+        if (res.ok) r = await res.json();
+      } catch {}
+      if (!r) r = { lat, lng, label: 'your location' };
+      const where = applyResolvedLocation(r);
+      showToast('success', '📍', `Location set: ${where}`);
     } catch { showToast('error', '❌', 'Could not reverse geocode location'); }
     btn.textContent = '📍';
   }, () => {

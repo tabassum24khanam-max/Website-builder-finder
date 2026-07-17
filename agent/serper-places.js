@@ -11,7 +11,7 @@
 //   2. a HARD haversine distance filter drops anything outside the radius.
 
 const {
-  serper, withTimeout, haversineKm, normalizeForMatch, cleanUrl, isSocialOrDirectory,
+  serper, withTimeout, haversineKm, normalizeForMatch, cleanUrl, isSocialOrDirectory, tldCountryConflict,
   bestPhone, pickPhone, normalizePhone, parseFollowers, verifyHandle, getCountryCode, cleanSearchName, trackCost,
 } = require('./util');
 const { geocodeBest } = require('./osm');
@@ -142,6 +142,19 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
   if (lat && lng) {
     center = { lat, lng }; precision = 'precise';
     log(`📍 Using map pin: ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
+    // A pin alone must still produce NEIGHBORHOOD-level queries — searching
+    // "cafes in Riyadh" city-wide and then distance-filtering leaves 1-2
+    // stray survivors. Reverse-geocode the pin into its district label so
+    // the queries target the actual area around the pin.
+    if (!resolvedArea) {
+      const { reverseGeocode } = require('./osm');
+      const rev = await withTimeout(reverseGeocode(+lat, +lng), 7000, null);
+      if (rev) {
+        resolvedArea = rev.neighborhood || '';
+        if (!city) city = rev.city || city;
+        if (resolvedArea) log(`📍 Pin is in: ${resolvedArea}${city ? ', ' + city : ''}`);
+      }
+    }
   } else {
     const geo = await withTimeout(geocodeBest({ neighborhood, city, zip, country }), 8000, null);
     if (geo) {
@@ -371,7 +384,7 @@ async function enrichBusiness(business, location, country, log) {
     // pages mention the name in their snippet but are not the business's site).
     // The exact-match clause catches short cores the length>=4 rule misses
     // (e.g. "HAI" → hai.sa) without opening the door to loose 3-char matches.
-    if (!business.website && link && !isSocialOrDirectory(link)) {
+    if (!business.website && link && !isSocialOrDirectory(link) && !tldCountryConflict(link, getCountryCode(country))) {
       try {
         const host = new URL(link).hostname.replace(/^www\./, '');
         const hostCore = host.replace(/\.[a-z.]+$/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
@@ -414,11 +427,11 @@ async function backfillWebsitePhone(business, city, country, log) {
   const organic = data.organic || [];
 
   if (!business.website) {
-    if (kg.website && !isSocialOrDirectory(kg.website)) business.website = cleanUrl(kg.website);
+    if (kg.website && !isSocialOrDirectory(kg.website) && !tldCountryConflict(kg.website, getCountryCode(country))) business.website = cleanUrl(kg.website);
     for (const r of organic) {
       if (business.website) break;
       const link = r.link || '';
-      if (!link || isSocialOrDirectory(link)) continue;
+      if (!link || isSocialOrDirectory(link) || tldCountryConflict(link, getCountryCode(country))) continue;
       try {
         const host = new URL(link).hostname.replace(/^www\./, '');
         const hostCore = host.replace(/\.[a-z.]+$/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();

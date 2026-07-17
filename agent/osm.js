@@ -101,6 +101,33 @@ async function geocodeBest({ neighborhood, city, zip, country }) {
   return null;
 }
 
+// Reverse geocode: coordinates → { neighborhood, city, zip, country }.
+// Nominatim gives the best district labels but commonly blocks cloud IPs
+// (Railway), so BigDataCloud's free keyless client API is the fallback — it
+// answers from server IPs and knows district names (e.g. "Ar Rawdah").
+async function reverseGeocode(lat, lng) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1&accept-language=en`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'LeadHunter/2.0 (lead-discovery)', 'Accept-Language': 'en' }, signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const a = (await res.json()).address || {};
+      const neighborhood = a.neighbourhood || a.suburb || a.city_district || a.quarter || a.residential || '';
+      const city = a.city || a.town || a.village || a.state || '';
+      if (neighborhood || city) return { neighborhood, city, zip: a.postcode || '', country: a.country || '' };
+    }
+  } catch {}
+  try {
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`, { signal: AbortSignal.timeout(6000) });
+    if (res.ok) {
+      const d = await res.json();
+      const city = d.city || d.principalSubdivision || '';
+      const neighborhood = d.locality && d.locality !== city ? d.locality : '';
+      if (neighborhood || city) return { neighborhood, city, zip: d.postcode || '', country: d.countryName || '' };
+    }
+  } catch {}
+  return null;
+}
+
 async function overpassQuery(query) {
   let lastErr;
   for (const endpoint of OVERPASS_ENDPOINTS) {
@@ -252,4 +279,4 @@ function prettyCategory(t) {
   return t.amenity || t.shop || t.tourism || t.office || t.leisure || t.craft || null;
 }
 
-module.exports = { findBusinessesOSM, geocode, geocodeBest };
+module.exports = { findBusinessesOSM, geocode, geocodeBest, reverseGeocode };

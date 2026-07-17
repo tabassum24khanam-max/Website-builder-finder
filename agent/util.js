@@ -144,6 +144,22 @@ function isSocialOrDirectory(url) {
   return SOCIAL_OR_DIRECTORY.test(url || '');
 }
 
+// ccTLD sanity for website matching: a cafe in Riyadh does not own
+// wisdom-cafe.com.au — a country-code TLD that belongs to a DIFFERENT country
+// than the business disqualifies the domain. Generic TLDs (.com/.net/.cafe/…)
+// and ccTLDs used generically on the open web (.io/.co/.me/.ai/…) always pass.
+const GENERIC_CCTLDS = new Set(['io', 'co', 'me', 'tv', 'ai', 'app', 'dev', 'sh', 'cc', 'ws', 'fm', 'to', 'gg', 'so', 'la', 'st', 'vc']);
+function tldCountryConflict(url, countryCode) {
+  if (!url || !countryCode) return false;
+  try {
+    const host = new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url).hostname.toLowerCase();
+    const m = host.match(/\.([a-z]{2})$/);
+    if (!m || GENERIC_CCTLDS.has(m[1])) return false;
+    const cc = m[1] === 'uk' ? 'gb' : m[1];
+    return cc !== countryCode.toLowerCase();
+  } catch { return false; }
+}
+
 // ── Phone extraction ─────────────────────────────────────────────────────────
 
 // Pull plausible phone numbers out of free text (search snippets, HTML).
@@ -436,7 +452,7 @@ function getCountryCode(country) {
 
 module.exports = {
   UA, withTimeout, delay, haversineKm, httpGet, serper,
-  normalizeForMatch, cleanUrl, isSocialOrDirectory,
+  normalizeForMatch, cleanUrl, isSocialOrDirectory, tldCountryConflict,
   extractPhones, isStrongPhone, bestPhone, pickPhone, normalizePhone, extractEmail, cleanSearchName,
   isValidPhone, isTollFreeNumber, toNational,
   parseCount, parseFollowers, parsePosts,
