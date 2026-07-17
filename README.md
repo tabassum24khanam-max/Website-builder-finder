@@ -29,7 +29,7 @@ npm start               # → http://localhost:3000
 | Key | What it adds | Without it |
 |---|---|---|
 | `SERPER_API_KEY` (recommended) | Fast Google-quality discovery + enrichment (serper.dev, ~$1/1k searches) | Falls back to OpenStreetMap discovery + a free DuckDuckGo/Bing engine — slower, still works |
-| `OPENAI_API_KEY` | The **AI deep search** toggle + the agentic phone hunter (finds numbers a plain search misses) | Those two steps are skipped; basic enrichment still runs |
+| `DEEPSEEK_API_KEY` **or** `OPENAI_API_KEY` | The **AI deep search** toggle + the agentic phone hunter (finds numbers a plain search misses). DeepSeek is the cheapest option and is preferred when both keys are set | Those two steps are skipped; basic enrichment still runs |
 | `GOOGLE_PLACES_API_KEY` (best quality) | Becomes the primary source: the **exact phone + website Google Maps shows**, every time | Phone/website come from search results — very good, not perfect |
 | `GOOGLE_MAPS_API_KEY` | Click-to-drop-pin on the search map | Map still shows and moves; set location by typing/pasting |
 

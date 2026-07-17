@@ -54,12 +54,11 @@ function isChain(name) {
 async function generateQueryVariants(category, areaText, country, log) {
   const base = [`${category} in ${areaText}`, `${category} near ${areaText}`];
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || apiKey === 'sk-paste-your-key-here') return base;
+  const { getAI } = require('./ai-client');
+  const ai = getAI('fast', { timeoutMs: 15000, maxRetries: 1 });
+  if (!ai) return base;
 
   try {
-    const OpenAI = require('openai');
-    const openai = new OpenAI({ apiKey, timeout: 15000, maxRetries: 1 });
     const prompt = `Generate 3 short Google Maps search queries to find "${category}" businesses in "${areaText}"${country ? `, ${country}` : ''}.
 
 Rules:
@@ -73,8 +72,8 @@ Rules:
 Example for cafes in Ibn Khaldun, Riyadh, Saudi Arabia:
 ["cafes in Ibn Khaldun Riyadh", "coffee shops Ibn Khaldun district Riyadh", "مقاهي حي ابن خلدون الرياض"]`;
 
-    const resp = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    const resp = await ai.client.chat.completions.create({
+      model: ai.model,
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 200,
     });

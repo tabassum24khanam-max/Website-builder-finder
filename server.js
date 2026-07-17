@@ -287,9 +287,10 @@ server.listen(PORT, () => {
   console.log('  ║   ⚡ LeadHunter AI v2  —  RUNNING        ║');
   console.log(`  ║   Open: http://localhost:${PORT}            ║`);
   console.log('  ╚══════════════════════════════════════════╝\n');
-  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'sk-paste-your-key-here') {
-    console.log('  ⚠️  WARNING: OPENAI_API_KEY not set. Edit .env file.\n');
+  const ai = require('./agent/ai-client').getAI();
+  if (!ai) {
+    console.log('  ⚠️  No AI key set (DEEPSEEK_API_KEY or OPENAI_API_KEY) — AI phone hunting and AI deep search are off.\n');
   } else {
-    console.log(`  ✅ OpenAI key loaded. Model: ${process.env.OPENAI_MODEL || 'gpt-4o-mini'}\n`);
+    console.log(`  ✅ AI provider: ${ai.provider} (model: ${ai.model})\n`);
   }
 });

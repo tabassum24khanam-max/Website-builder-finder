@@ -16,24 +16,18 @@
 // Everything it returns is validated (phone shape + corroboration, handle match)
 // so the AI can't invent data — it may only report what it actually saw.
 
-const { OpenAI } = require('openai');
 const {
   serper, httpGet, withTimeout,
   bestPhone, pickPhone, isValidPhone, isStrongPhone,
   verifyHandle, getCountryCode, cleanSearchName, isSocialOrDirectory,
   normalizeForMatch, cleanUrl, extractEmail, trackCost,
 } = require('./util');
-
-// Lazy client - constructing OpenAI() with no key THROWS, which would crash the
-// whole server at require() time when the key is not configured.
-let _openai = null;
-const getOpenAI = () => (_openai ||= new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 30000, maxRetries: 0 }));
-// AI mode uses a FRONTIER model for human-level judgment (deciding which number
-// truly belongs to the business, rejecting switchboards/wrong-region numbers,
-// confirming the right Instagram). It auto-falls-back to the cheap model if the
-// key can't access it.
-const AI_MODEL = process.env.AI_MODE_MODEL || 'gpt-4o';
-const AI_FALLBACK = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+// AI mode wants the provider's most capable tool-use model (getAI 'deep'):
+// human-level judgment for deciding which number truly belongs to the business,
+// rejecting switchboards/wrong-region numbers, confirming the right Instagram.
+// On OpenAI it auto-falls-back to the cheap model if the key can't access the
+// frontier one; on DeepSeek deep and fast are the same model.
+const { getAI } = require('./ai-client');
 
 const IG_RESERVED = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'about', 'help', 'popular', 'web']);
 
@@ -134,10 +128,10 @@ function harvest(text, name, cc, store, srcIdx = 0) {
 }
 
 async function aiEnrich({ name, city, country, website, instagramHandle }, log) {
-  // Only OpenAI is required — the search tool works keyless via the free engine.
+  // Any AI provider works (DeepSeek/OpenAI) — the search tool itself is keyless.
   const serperKey = process.env.SERPER_API_KEY;
-  const oaiKey = process.env.OPENAI_API_KEY;
-  if (!oaiKey || oaiKey === 'sk-paste-your-key-here') return { phone: null, instagram: instagramHandle || null, tiktok: null, website: website || null };
+  const ai = getAI('deep', { timeoutMs: 30000 });
+  if (!ai) return { phone: null, instagram: instagramHandle || null, tiktok: null, website: website || null };
 
   const cc = getCountryCode(country);
   const sn = cleanSearchName(name);
@@ -168,19 +162,19 @@ When finished, reply with ONLY this JSON (no prose):
 {"phone": "<number or null>", "instagram": "<@handle or null>", "tiktok": "<@handle or null>", "website": "<url or null>"}`;
 
   const messages = [{ role: 'user', content: prompt }];
-  let model = AI_MODEL;
+  let model = ai.model;
 
   for (let step = 0; step < 8; step++) {
     let resp;
     const callOpts = { messages, tools: TOOLS, tool_choice: step < 7 ? 'auto' : 'none', max_tokens: 350, temperature: 0.1 };
     try {
-      resp = await getOpenAI().chat.completions.create({ model, ...callOpts });
+      resp = await ai.client.chat.completions.create({ model, ...callOpts });
     } catch (e) {
       // Frontier model not accessible on this key → fall back to the cheap one.
-      if (model !== AI_FALLBACK && /model|not.?found|does not exist|no access|unsupported|permission|invalid/i.test(e.message || '')) {
-        if (log) log(`🤖 ${model} unavailable — using ${AI_FALLBACK}`);
-        model = AI_FALLBACK;
-        try { resp = await getOpenAI().chat.completions.create({ model, ...callOpts }); }
+      if (model !== ai.fallbackModel && /model|not.?found|does not exist|no access|unsupported|permission|invalid/i.test(e.message || '')) {
+        if (log) log(`🤖 ${model} unavailable — using ${ai.fallbackModel}`);
+        model = ai.fallbackModel;
+        try { resp = await ai.client.chat.completions.create({ model, ...callOpts }); }
         catch (e2) { if (log) log(`🤖 AI enrich error: ${e2.message}`); break; }
       } else { if (log) log(`🤖 AI enrich step ${step} error: ${e.message}`); break; }
     }
