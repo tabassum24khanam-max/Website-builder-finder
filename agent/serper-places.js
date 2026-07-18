@@ -217,10 +217,84 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
   const candidates = [];
   const hardCap = Math.min(limit * 3, 60); // over-fetch; enrichment will drop some
 
+  // Shared collector: dedup, chain/map-label filters, candidate shape. The
+  // locality filter is applied ONCE at the end against a centre we trust — so
+  // a wrong geocode can never pre-drop the real local results.
+  const areaEchoText = `${neighborhood || ''} ${zip || ''} ${city || ''} ${country || ''}`;
+  const addPlaces = (places, { mapsAuthoritative = false } = {}) => {
+    let added = 0;
+    for (const p of (places || [])) {
+      const name = (p.title || '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.set(key, true);
+
+      if (isChain(name)) { log(`⏭️  Chain/listing skipped: ${name}`); continue; }
+      if (isAreaEcho(name, areaEchoText)) { log(`⏭️  Map label skipped: ${name}`); continue; }
+
+      candidates.push({
+        dist: 9999,
+        biz: {
+          name,
+          category: p.category || p.type || category,
+          searchedCategory: category,
+          address: p.address || null,
+          phone: normalizePhone(p.phoneNumber || p.phone),
+          // /maps probe results carry the number straight off the Google Maps
+          // panel — the strongest source there is; enrichment must not outvote it.
+          phoneFromMaps: mapsAuthoritative && !!(p.phoneNumber || p.phone),
+          website: cleanUrl(p.website),
+          rating: p.rating || null,
+          reviewCount: p.ratingCount || 0,
+          lat: p.latitude || null,
+          lng: p.longitude || null,
+          photoUrl: p.thumbnailUrl || null,
+          instagramHint: null,
+          mapsUrl: p.cid
+            ? `https://www.google.com/maps?cid=${p.cid}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + locationLabel)}`,
+        },
+      });
+      added++;
+    }
+    return added;
+  };
+
+  // ── POINT-ZERO SCAN ─────────────────────────────────────────────────────────
+  // The text queries below return Google's PROMINENCE ranking for an area —
+  // the famous places across a whole district — which misses the small cafes
+  // right around the user's pin. So with a precise centre we FIRST scan the
+  // map AT the pin, like a human panning Google Maps: tight-viewport place
+  // lookups centred on point zero (17z ≈ a street-level view, 15z ≈ the
+  // walking ring, 13z ≈ the wider area). Their results ARE the nearest ones.
+  if (center && precision === 'precise') {
+    // Serper's /maps endpoint IS Google Maps panning: deterministic, strictly
+    // viewport-ranked, 20 results/page, and each result carries the phone
+    // number straight off the Maps panel. (/places' ll hint is flaky — it
+    // sometimes serves globally-prominent junk — so /maps is the probe.)
+    // A distance guard still applies: a probe's only job is the nearby ring.
+    const probeKeepKm = Math.max((radiusKm || 2) * 2, 3);
+    const nearOnly = (places) => (places || []).filter(p =>
+      typeof p.latitude === 'number' && typeof p.longitude === 'number' &&
+      haversineKm(center.lat, center.lng, p.latitude, p.longitude) <= probeKeepKm);
+    for (const [zoom, page] of [['17z', 1], ['16z', 1], ['16z', 2]]) {
+      if (candidates.length >= hardCap) break;
+      try {
+        const body = { q: category, hl: 'en', ll: `@${center.lat},${center.lng},${zoom}` };
+        if (page > 1) body.page = page;
+        const raw = await serper('/maps', body, apiKey);
+        const near = nearOnly(raw.places);
+        if (near.length) log(`🎯 Point-zero scan ${zoom}${page > 1 ? ' p' + page : ''}: +${addPlaces(near, { mapsAuthoritative: true })} nearby (Maps panel data)`);
+      } catch (e) { log(`⚠️  Point-zero scan ${zoom} failed: ${e.message}`, 'warn'); }
+    }
+  }
+
   for (const q of queries) {
     if (candidates.length >= hardCap) break;
     const baseBody = { q, location: locationLabel, gl, hl: 'en' };
-    if (center) baseBody.ll = `@${center.lat},${center.lng},12z`;
+    // Viewport hint: tight for a precise centre, city-wide otherwise.
+    if (center) baseBody.ll = `@${center.lat},${center.lng},${precision === 'precise' ? '14z' : '12z'}`;
 
     for (let page = 1; page <= 4; page++) {
       if (candidates.length >= hardCap) break;
@@ -233,43 +307,47 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
       }
       const places = raw.places || [];
       if (!places.length) break;
+      addPlaces(places);
+      if (places.length < 10) break; // last page
+    }
+  }
 
-      for (const p of places) {
-        const name = (p.title || '').trim();
-        if (!name) continue;
-        const key = name.toLowerCase();
-        if (seen.has(key)) continue;
+  // ── OSM MERGE ───────────────────────────────────────────────────────────────
+  // OpenStreetMap is a GEOGRAPHIC database: it returns everything it knows
+  // inside the radius, nearest-first, immune to prominence ranking. Whatever
+  // it adds that Google's ranking skipped gets phone/IG/TikTok from the same
+  // per-business enrichment as everyone else.
+  if (center && precision === 'precise') {
+    try {
+      const { findBusinessesOSM } = require('./osm');
+      const osmRaw = await withTimeout(findBusinessesOSM({
+        category, location: [resolvedArea, city].filter(Boolean).join(', ') || city, country,
+        lat: center.lat, lng: center.lng, radius_km: Math.max(radiusKm || 2, 1), limit: 30,
+        noWebsiteOnly: false, log: () => {},
+      }), 25000, []);
+      let added = 0;
+      for (const b of (osmRaw || [])) {
+        const key = (b.name || '').toLowerCase().trim();
+        if (!key || seen.has(key)) continue;
+        if (isChain(b.name) || isAreaEcho(b.name, areaEchoText)) continue;
+        // Fuzzy dedupe: same normalized name core as a Google candidate → same place.
+        const core = normalizeForMatch(b.name);
+        if (core && candidates.some(c => normalizeForMatch(c.biz.name) === core)) continue;
         seen.set(key, true);
-
-        if (isChain(name)) { log(`⏭️  Chain/listing skipped: ${name}`); continue; }
-        if (isAreaEcho(name, `${neighborhood || ''} ${zip || ''} ${city || ''} ${country || ''}`)) { log(`⏭️  Map label skipped: ${name}`); continue; }
-
-        // Collect everything (with coords). The locality filter is applied ONCE
-        // at the end, against a centre we trust — so a wrong geocode can never
-        // pre-drop the real local results.
         candidates.push({
           dist: 9999,
           biz: {
-            name,
-            category: p.category || category,
-            searchedCategory: category,
-            address: p.address || null,
-            phone: normalizePhone(p.phoneNumber || p.phone),
-            website: cleanUrl(p.website),
-            rating: p.rating || null,
-            reviewCount: p.ratingCount || 0,
-            lat: p.latitude || null,
-            lng: p.longitude || null,
-            photoUrl: p.thumbnailUrl || null,
-            instagramHint: null,
-            mapsUrl: p.cid
-              ? `https://www.google.com/maps?cid=${p.cid}`
-              : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + locationLabel)}`,
+            name: b.name, category: b.category || category, searchedCategory: category,
+            address: b.address || null, phone: normalizePhone(b.phone), website: cleanUrl(b.website),
+            rating: null, reviewCount: 0, lat: b.lat ?? null, lng: b.lng ?? null,
+            photoUrl: null, instagramHint: null,
+            mapsUrl: b.mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.name + ' ' + (city || ''))}`,
           },
         });
+        added++;
       }
-      if (places.length < 10) break; // last page
-    }
+      if (added) log(`🗺️ OpenStreetMap added ${added} nearby place${added > 1 ? 's' : ''} Google's ranking missed`);
+    } catch {}
   }
 
   if (!candidates.length) { log('⚠️  No results found.'); return []; }
@@ -295,7 +373,9 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
   // Filter radius: tight when we targeted a sub-area (pin / zip / neighbourhood),
   // wider for a whole-city search. Never Infinity now that we always have a centre.
   const targetedArea = !!(lat && lng) || !!zip || !!(neighborhood || resolvedArea);
-  const filterRadius = targetedArea ? Math.max((radiusKm || 5) * 1.3, 3) : 30;
+  // Small grace (×1.3) over the chosen radius; no 3km floor — a 1km search
+  // must actually mean 1km, or "nearby" quietly becomes the whole district.
+  const filterRadius = targetedArea ? Math.max((radiusKm || 5) * 1.3, 1.2) : 30;
 
   let kept = candidates;
   if (finalCenter) {
@@ -351,7 +431,7 @@ async function enrichBusiness(business, location, country, log) {
   // Gather phone candidates from all sources, then pick by consensus (a real
   // number recurs; the wrong toll-free appears once) — fixes the ON Cafe bug.
   const phoneCandidates = [];
-  if (business.phone) phoneCandidates.push({ raw: business.phone, weight: 3 });
+  if (business.phone) phoneCandidates.push({ raw: business.phone, weight: business.phoneFromMaps ? 6 : 3 });
   if (kg.phoneNumber) phoneCandidates.push({ raw: kg.phoneNumber, weight: 4 });
 
   for (const r of organic) {

@@ -64,9 +64,37 @@ async function findBusinessesPlaces({ category, location, city, neighborhood, zi
     'places.types', 'places.businessStatus', 'nextPageToken',
   ].join(',');
 
-  // Fetch up to 3 pages (≈60 candidates) so we still hit the requested count
-  // after chain + locality filtering.
   const rawPlaces = [];
+
+  // POINT-ZERO PASS — searchNearby with rankPreference DISTANCE is the ONLY
+  // Google API that returns places strictly nearest-first from a point (text
+  // search ranks by prominence and misses small spots near the pin). Run it
+  // first whenever we have a pin/geocode; the text pass below tops up.
+  const NEARBY_TYPES = {
+    'Cafes': ['cafe', 'coffee_shop'], 'Restaurants': ['restaurant'], 'Bakeries': ['bakery'],
+    'Barbershops': ['barber_shop', 'hair_salon'], 'Salons': ['beauty_salon', 'nail_salon'],
+    'Clinics': ['doctor', 'medical_lab'], 'Dental': ['dental_clinic', 'dentist'],
+    'Gyms': ['gym', 'fitness_center'], 'Pharmacies': ['pharmacy', 'drugstore'],
+    'Hotels': ['hotel', 'motel'], 'Car Repair': ['car_repair'], 'Law Offices': ['lawyer'],
+  };
+  const nearbyTypes = NEARBY_TYPES[category];
+  if (centerLat && centerLng && nearbyTypes) {
+    try {
+      const data = await postJson(`${PLACES_BASE}/places:searchNearby`, {
+        includedTypes: nearbyTypes,
+        maxResultCount: 20,
+        rankPreference: 'DISTANCE',
+        languageCode: 'en',
+        locationRestriction: { circle: { center: { latitude: centerLat, longitude: centerLng }, radius: Math.min((radius_km || 5) * 1000, 50000) } },
+      }, { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': fieldMask.replace(',nextPageToken', '') });
+      const got = data.places || [];
+      if (got.length) log(`🎯 Nearest-first scan: ${got.length} places from point zero`);
+      rawPlaces.push(...got);
+    } catch (e) { log(`⚠️  Nearby scan failed (${e.message}) — using text search only`, 'warn'); }
+  }
+
+  // TEXT PASS — up to 2 pages (≈40 candidates) so we still hit the requested
+  // count after chain + locality filtering.
   let pageToken = null;
   for (let page = 0; page < 2; page++) { // 2 pages (≈40 candidates) — keeps cost down
     const requestBody = {
@@ -104,12 +132,17 @@ async function findBusinessesPlaces({ category, location, city, neighborhood, zi
   // HARD locality filter — same guarantee as the Serper path: tight when a
   // sub-area was targeted (pin / zip / neighbourhood), wider for a whole city.
   const targeted = !!(lat && lng) || !!zip || !!neighborhood;
-  const filterKm = targeted ? Math.max((radius_km || 5) * 1.3, 3) : 30;
+  // Small grace over the chosen radius; no 3km floor — 1km must mean 1km.
+  const filterKm = targeted ? Math.max((radius_km || 5) * 1.3, 1.2) : 30;
 
   const out = [];
+  const seenIds = new Set(); // nearby + text passes overlap — dedupe by id/name
   for (const place of rawPlaces) {
     const name = place.displayName?.text || place.displayName || '';
     if (!name) continue;
+    const dupKey = place.id || name.toLowerCase();
+    if (seenIds.has(dupKey)) continue;
+    seenIds.add(dupKey);
     if (place.businessStatus === 'CLOSED_PERMANENTLY') continue;
     if (isChain(name)) { log(`⏭️  Chain skipped: ${name}`); continue; }
     const plat = place.location?.latitude, plng = place.location?.longitude;
@@ -137,6 +170,11 @@ async function findBusinessesPlaces({ category, location, city, neighborhood, zi
     });
     if (out.length >= limit * 3) break;
   }
+
+  // Nearest-first — point zero is the pin, results radiate outward from it.
+  out.forEach(b => { b._d = (typeof b.lat === 'number') ? haversineKm(centerLat, centerLng, b.lat, b.lng) : 9999; });
+  out.sort((a, b) => a._d - b._d);
+  out.forEach(b => delete b._d);
 
   log(`✅ ${out.length} businesses within the locality (Google Places — phone & website included)`);
   return out;
