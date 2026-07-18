@@ -151,7 +151,9 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
       aiEnrich({ name: biz.name, city: location, country, website: biz.website, instagramHandle: biz.instagramHint?.handle }, log),
       90000, null);
     if (r) {
-      if (r.phone) biz.phone = r.phone;
+      // Never let AI research overwrite a number taken straight off the
+      // Google Maps panel at discovery — that's the strongest source there is.
+      if (r.phone && !biz.phoneFromMaps) biz.phone = r.phone;
       if (r.website && !biz.website) biz.website = r.website;
       if (r.instagram) { ig.handle = r.instagram; ig.url = `https://www.instagram.com/${r.instagram}/`; }
       if (r.tiktok) { tiktok = { handle: r.tiktok, url: `https://www.tiktok.com/@${r.tiktok}` }; }
