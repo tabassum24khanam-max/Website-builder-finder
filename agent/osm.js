@@ -1,6 +1,8 @@
 // OpenStreetMap Overpass API — find businesses by category in an area
 // No API key, no bot detection, includes a built-in "no website" filter.
 
+const { isSocialOrDirectory, extractSocialHandle } = require('./util');
+
 const CATEGORY_TAGS = {
   'Restaurants':  [['amenity', 'restaurant'], ['amenity', 'fast_food']],
   'Cafes':        [['amenity', 'cafe'], ['amenity', 'coffee_shop']],
@@ -255,12 +257,21 @@ function parseElements(data, category, limit, log, centerLat, centerLng) {
       t['addr:postcode'],
     ].filter(Boolean);
 
+    // A tiny business's OSM entry sometimes has an Instagram/TikTok URL in
+    // the website tag (no real site) — that's first-party data, not a real
+    // website. Pull the handle out instead of letting it masquerade as one.
+    const rawWebsite = t.website || t['contact:website'] || t.url || null;
+    const igTag = t['contact:instagram'] ? extractSocialHandle(t['contact:instagram']) || (/^[A-Za-z0-9._]{2,30}$/.test(t['contact:instagram']) ? { platform: 'instagram', handle: t['contact:instagram'].replace(/^@/, '') } : null) : null;
+    const social = igTag || (rawWebsite && isSocialOrDirectory(rawWebsite) ? extractSocialHandle(rawWebsite) : null);
+
     return {
       name: t.name,
       category: prettyCategory(t) || category,
       address: addrParts.length ? addrParts.join(', ') : (t['addr:full'] || null),
       phone: t.phone || t['contact:phone'] || t['contact:mobile'] || null,
-      website: t.website || t['contact:website'] || t.url || null,
+      website: (rawWebsite && isSocialOrDirectory(rawWebsite)) ? null : rawWebsite,
+      instagramHint: social?.platform === 'instagram' ? { handle: social.handle, url: `https://www.instagram.com/${social.handle}/` } : null,
+      tiktokHint: social?.platform === 'tiktok' ? social.handle : null,
       rating: null,
       reviewCount: 0,
       lat: elLat,

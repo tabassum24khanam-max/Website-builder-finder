@@ -994,7 +994,10 @@
           </div>
           <div id="picker-status" style="font-size:11.5px;color:var(--text-dim);margin-top:6px;display:flex;justify-content:space-between;gap:10px;align-items:center;">
             <span id="picker-status-text">Type a City / Area, Neighborhood or Zip — the map updates, and you can drag &amp; zoom it freely.</span>
-            <a id="picker-open-maps" href="#" target="_blank" rel="noopener" style="display:none;color:var(--amber);white-space:nowrap;text-decoration:none;">Open in Maps ↗</a>
+            <span style="white-space:nowrap;display:flex;gap:10px;align-items:center;">
+              <a id="picker-clear-pin" href="#" onclick="event.preventDefault();clearPickerPin();" style="display:none;color:var(--text-dim);text-decoration:underline;">✕ Clear pin</a>
+              <a id="picker-open-maps" href="#" target="_blank" rel="noopener" style="display:none;color:var(--amber);white-space:nowrap;text-decoration:none;">Open in Maps ↗</a>
+            </span>
           </div>
         </div>
 
@@ -1271,6 +1274,7 @@ const state = {
   ws: null,
   wsReconnectTimer: null,
   leadsView: 'table',
+  researchExcludeNames: new Set(), // businesses already seen at this pin, across "Research this area" rounds
 };
 
 // ============================================================
@@ -1387,6 +1391,10 @@ function handleWsEvent(data) {
       break;
     case 'agent_step':
       updateStatusBar(data.businessName ? `Analyzing: ${data.businessName}` : `Step: ${data.step}`);
+      // Every discovered candidate — saved as a lead or not — has now been
+      // dealt with. Remember it so a later "Research this area" round never
+      // re-surfaces it (and never re-spends Serper credits checking it again).
+      if (data.businessName) state.researchExcludeNames.add(data.businessName);
       break;
     case 'lead_found':
       handleLeadFound(data.lead);
@@ -1398,7 +1406,7 @@ function handleWsEvent(data) {
       handleSearchStarted(data.search);
       break;
     case 'search_complete':
-      handleSearchComplete(data.searchId, data.total);
+      handleSearchComplete(data.searchId, data.total, data.researchMode, data.noNewResults);
       break;
     case 'search_error':
       handleSearchError(data.searchId, data.error);
@@ -1480,7 +1488,8 @@ async function resolvePastedLocation() {
   }
 }
 
-async function startSearch() {
+async function startSearch(opts = {}) {
+  const isResearch = !!opts.isResearch;
   const customCat = document.getElementById('custom-category').value.trim();
   const category = customCat || state.selectedCategory;
   const location = document.getElementById('location-input').value.trim();
@@ -1495,6 +1504,11 @@ async function startSearch() {
   if (!category) { showToast('warn', '⚠️', 'Please select or enter a category.'); return; }
   if (!location && !zip) { showToast('warn', '⚠️', 'Please enter a city or zip code.'); return; }
 
+  // A brand-new search starts a fresh "already found" list; "Research this
+  // area" deliberately keeps accumulating across rounds so a 3rd research
+  // pass still excludes what rounds 1 AND 2 turned up.
+  if (!isResearch) state.researchExcludeNames = new Set();
+
   const payload = {
     category, location, country, zip, street,
     radius_km, count,
@@ -1502,16 +1516,21 @@ async function startSearch() {
     lng: pickerState.lng || null,
     no_website_only: noWebsiteOnly,
     ai_mode: aiMode,
+    exclude_names: isResearch ? Array.from(state.researchExcludeNames) : [],
   };
 
   document.getElementById('start-btn').disabled = true;
-  clearLog();
+  if (!isResearch) {
+    clearLog();
+    document.getElementById('live-lead-count').textContent = '0';
+    document.getElementById('live-leads-grid').innerHTML = '';
+  }
   showLogPanel();
   showLiveLeadsPanel();
-  document.getElementById('live-lead-count').textContent = '0';
-  document.getElementById('live-leads-grid').innerHTML = '';
   setStatus('searching', 'Searching…');
-  appendLog('info', `Starting search: ${category} in ${location}${country ? ', ' + country : ''}…`);
+  appendLog('info', isResearch
+    ? `Researching ${category} in ${location}${country ? ', ' + country : ''} — excluding ${payload.exclude_names.length} already found…`
+    : `Starting search: ${category} in ${location}${country ? ', ' + country : ''}…`);
 
   try {
     const res = await apiFetch('/api/searches', { method: 'POST', body: JSON.stringify(payload) });
@@ -1529,6 +1548,20 @@ async function startSearch() {
     setStatus(state.wsConnected ? 'connected' : 'disconnected', state.wsConnected ? 'Connected' : 'Disconnected');
     hideLogPanel();
   }
+}
+
+// "Research this area" — same pin/category/radius, but excludes everything
+// already found here across all rounds so far. Bumps the radius by +1km
+// automatically when called from the "no new results" prompt.
+function researchThisArea(bumpRadius) {
+  if (bumpRadius) {
+    const sel = document.getElementById('radius-select');
+    const cur = parseInt(sel.value) || 1;
+    let best = null;
+    for (const o of sel.options) { const v = parseInt(o.value); if (v > cur && (best === null || v < best)) best = v; }
+    if (best !== null) { sel.value = String(best); showToast('info', '📏', `Radius increased to ${sel.options[sel.selectedIndex].text}.`); }
+  }
+  startSearch({ isResearch: true });
 }
 
 async function stopSearch() {
@@ -1554,15 +1587,15 @@ function handleSearchStarted(search) {
   showLiveLeadsPanel();
 }
 
-function handleSearchComplete(searchId, total) {
-  appendLog('success', `Search complete! Found ${total} leads.`);
+function handleSearchComplete(searchId, total, researchMode, noNewResults) {
+  appendLog('success', researchMode ? `Research complete! Found ${total} new leads.` : `Search complete! Found ${total} leads.`);
   document.getElementById('start-btn').disabled = false;
   setStatus('connected', 'Connected');
   updateStatusBar(`Done — ${total} lead${total !== 1 ? 's' : ''} found`, false);
   state.activeSearchId = null;
   updateSearchStatus(searchId, 'done');
-  showToast('success', '✅', `Search complete! ${total} leads found.`);
-  showExportButtons(searchId);
+  showToast('success', '✅', researchMode ? `Research complete! ${total} new leads found.` : `Search complete! ${total} leads found.`);
+  showExportButtons(searchId, { researchMode, noNewResults });
   updateBadge();
   if (state.currentPage === 'all-leads') renderLeadsTable();
   if (state.currentPage === 'analytics') renderAnalytics();
@@ -1665,13 +1698,22 @@ function updateStatusBar(text, spinning = true) {
   if (spinner) spinner.style.display = spinning ? 'block' : 'none';
 }
 
-function showExportButtons(searchId) {
+function showExportButtons(searchId, opts = {}) {
   const wrap = document.getElementById('export-btns');
   wrap.style.display = 'flex';
+  wrap.style.flexWrap = 'wrap';
   wrap.innerHTML = `
     <a class="btn btn-ghost btn-sm" href="/api/export/${searchId}/excel" target="_blank">📥 Export Excel</a>
     <a class="btn btn-ghost btn-sm" href="/api/export/${searchId}/pdf" target="_blank">📄 Export PDF</a>
+    <button class="btn btn-ghost btn-sm" type="button" onclick="researchThisArea(false)" title="Search this exact area again, skipping everything already found">🔁 Research this area</button>
   `;
+  if (opts.noNewResults) {
+    const prompt = document.createElement('div');
+    prompt.style.cssText = 'width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:rgba(255,255,255,0.03);font-size:13px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;';
+    prompt.innerHTML = `<span>No new businesses within this radius — everything nearby is already in your list.</span>
+      <button class="btn btn-amber btn-sm" type="button" onclick="researchThisArea(true)">📏 Increase radius &amp; research again</button>`;
+    wrap.appendChild(prompt);
+  }
 }
 
 // ============================================================
@@ -2622,9 +2664,34 @@ async function useCurrentLocation() {
 // interactive Google Map (drag to pan, pinch to zoom) — we just can't read
 // taps on it (cross-origin), so location comes from typing. Both paths feed
 // pickerState into the search. It auto-upgrades the moment a key is present.
-const pickerState = { lat: null, lng: null, zoom: 13, exact: false };
+// `locked` = true once a real point (paste/GPS/autocomplete/explicit map tap)
+// is set. A locked pin IS point zero — typing in City/Country/Zip/Street
+// afterward must never silently move or clear it (that was the 4-month bug:
+// the "input" handler below used to null pickerState.lat/lng on every
+// keystroke, so a pasted pin quietly vanished before the search fired).
+const pickerState = { lat: null, lng: null, zoom: 13, exact: false, locked: false };
 let MAPS_MODE = 'embed';                 // 'google' | 'embed'
 let gmap = null, gmarker = null, ggeocoder = null;
+
+function lockPickerPin(label) {
+  pickerState.locked = true;
+  const radiusEl = document.getElementById('radius-select');
+  const radiusTxt = radiusEl ? radiusEl.options[radiusEl.selectedIndex]?.text || '' : '';
+  const where = label || `${(+pickerState.lat).toFixed(4)}, ${(+pickerState.lng).toFixed(4)}`;
+  updatePickerStatus(`📍 Point zero locked — searching from ${where}${radiusTxt ? ' (≤' + radiusTxt + ')' : ''}`);
+  const clearLink = document.getElementById('picker-clear-pin');
+  if (clearLink) clearLink.style.display = '';
+}
+
+function clearPickerPin() {
+  pickerState.lat = null; pickerState.lng = null; pickerState.exact = false; pickerState.locked = false;
+  const clearLink = document.getElementById('picker-clear-pin');
+  if (clearLink) clearLink.style.display = 'none';
+  if (gmarker) { gmarker.setMap(null); gmarker = null; }
+  updatePickerStatus('Type a City / Area, Neighborhood or Zip — the map updates, and you can drag & zoom it freely.');
+  if (MAPS_MODE === 'google') { if (pickerQueryText()) gForwardGeocode(pickerQueryText()); }
+  else { refreshEmbed(); geocodeTypedLocation(); }
+}
 
 function pickerQueryText() {
   const v = id => (document.getElementById(id)?.value || '').trim();
@@ -2704,12 +2771,14 @@ function loadGoogleMaps() {
 }
 
 function gPlacePin(lat, lng, fill) {
-  pickerState.lat = lat; pickerState.lng = lng; pickerState.exact = true;
+  pickerState.lat = lat; pickerState.lng = lng; pickerState.exact = true; pickerState.locked = true;
   if (!gmarker) {
     gmarker = new google.maps.Marker({ map: gmap, position: { lat, lng }, draggable: true });
     gmarker.addListener('dragend', e => gPlacePin(e.latLng.lat(), e.latLng.lng(), true));
   } else gmarker.setPosition({ lat, lng });
   updateOpenLink();
+  const clearLink = document.getElementById('picker-clear-pin');
+  if (clearLink) clearLink.style.display = '';
   if (fill) { updatePickerStatus('📍 Setting location…'); gReverseFill(lat, lng); }
 }
 
@@ -2723,7 +2792,7 @@ function gReverseFill(lat, lng) {
     const hood = get('neighborhood', 'sublocality', 'sublocality_level_1', 'route');
     set('location-input', city); set('country-input', get('country'));
     set('zip-input', get('postal_code')); set('street-input', hood);
-    updatePickerStatus(`📍 ${[hood, city].filter(Boolean).join(', ') || `${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`}`);
+    lockPickerPin([hood, city].filter(Boolean).join(', '));
   });
 }
 
@@ -2765,7 +2834,7 @@ function setPickerLocation(lat, lng, label) {
   pickerState.lat = lat; pickerState.lng = lng; pickerState.exact = true;
   if (MAPS_MODE === 'google' && gmap) { gmap.setCenter({ lat, lng }); gmap.setZoom(15); gPlacePin(lat, lng, false); }
   else refreshEmbed();
-  updatePickerStatus(label ? `📍 ${label}` : `📍 ${(+lat).toFixed(4)}, ${(+lng).toFixed(4)}`);
+  lockPickerPin(label);
 }
 
 async function initPickerMap() {
@@ -2783,6 +2852,11 @@ let pickerRefreshTimer = null;
   const el = document.getElementById(elId);
   if (!el) return;
   el.addEventListener('input', () => {
+    // A locked pin (from paste-location, GPS, autocomplete, or a tap/drag on
+    // the map) IS point zero — typing in these fields afterward must never
+    // move or clear it. Editing text again only re-geocodes the map preview
+    // once the pin has been explicitly cleared (see clearPickerPin()).
+    if (pickerState.locked) return;
     pickerState.exact = false;
     if (MAPS_MODE !== 'google') { pickerState.lat = null; pickerState.lng = null; }
     clearTimeout(pickerRefreshTimer);

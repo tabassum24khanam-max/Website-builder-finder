@@ -144,6 +144,24 @@ function isSocialOrDirectory(url) {
   return SOCIAL_OR_DIRECTORY.test(url || '');
 }
 
+// A business's own Google Maps listing / knowledge graph sometimes has
+// nothing but an Instagram or TikTok link where the "website" field goes
+// (small businesses that never built a site). That link is FIRST-PARTY data
+// straight from the business's own profile — not a search-result guess — so
+// unlike snippet matches it doesn't need name verification, and it must
+// never be stored as `website` (that would wrongly mark them as already
+// having a site). Pull the handle out instead.
+const IG_RESERVED_HOSTS = new Set(['p', 'reel', 'reels', 'tv', 'stories', 'explore', 'accounts', 'about', 'help', 'legal', 'press', 'api', 'blog', 'developers', 'privacy', 'safety', 'support', 'directory', 'challenge', 'popular', 'web', 'emails', 'session']);
+const TT_RESERVED_HOSTS = new Set(['video', 'tag', 'music', 'discover', 'foryou', 'following', 'live', 'explore', 'search', 'about', 'legal', 'business', 'upload', 'login']);
+function extractSocialHandle(url) {
+  if (!url) return null;
+  const im = url.match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/i);
+  if (im && !IG_RESERVED_HOSTS.has(im[1].toLowerCase())) return { platform: 'instagram', handle: im[1] };
+  const tm = url.match(/tiktok\.com\/@([A-Za-z0-9._]{2,30})/i);
+  if (tm && !TT_RESERVED_HOSTS.has(tm[1].toLowerCase())) return { platform: 'tiktok', handle: tm[1] };
+  return null;
+}
+
 // ccTLD sanity for website matching: a cafe in Riyadh does not own
 // wisdom-cafe.com.au — a country-code TLD that belongs to a DIFFERENT country
 // than the business disqualifies the domain. Generic TLDs (.com/.net/.cafe/…)
@@ -452,7 +470,7 @@ function getCountryCode(country) {
 
 module.exports = {
   UA, withTimeout, delay, haversineKm, httpGet, serper,
-  normalizeForMatch, cleanUrl, isSocialOrDirectory, tldCountryConflict,
+  normalizeForMatch, cleanUrl, isSocialOrDirectory, extractSocialHandle, tldCountryConflict,
   extractPhones, isStrongPhone, bestPhone, pickPhone, normalizePhone, extractEmail, cleanSearchName,
   isValidPhone, isTollFreeNumber, toNational,
   parseCount, parseFollowers, parsePosts,

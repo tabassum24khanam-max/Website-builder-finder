@@ -13,18 +13,24 @@ async function findInstagram({ name, city, country, websiteUrl, hint }, log) {
     postsPerMonth: null, lastPost: null, bio: null, phoneFromBio: null, emailFromBio: null,
   };
 
-  // 1. Handle already found during enrichment (no extra Serper query needed).
-  if (hint && hint.handle && verifyHandle(hint.handle, name)) {
+  // 1. Handle already found during enrichment — TRUSTED without re-verifying:
+  //    it's either lifted straight off the business's own Maps listing
+  //    (first-party) or already passed verifyHandle at the source. Re-running
+  //    verifyHandle here was the "on" bug — a short/generic business name
+  //    (e.g. "ON") can never pass name-core verification, so a real,
+  //    first-party handle got silently discarded and re-searched for nothing.
+  if (hint && hint.handle) {
     result.handle = hint.handle;
     result.url = hint.url || `https://www.instagram.com/${hint.handle}/`;
     result.followers = hint.followers || null;
     result.bio = hint.bio || null;
   }
 
-  // 2. The Maps "website" is itself an Instagram page.
+  // 2. The Maps "website" is itself an Instagram page — also first-party
+  //    (it's the URL the business itself listed as its site), so trust it too.
   if (!result.handle && websiteUrl) {
     const m = websiteUrl.match(/instagram\.com\/([A-Za-z0-9._]{2,30})\/?/i);
-    if (m && verifyHandle(m[1], name)) {
+    if (m) {
       result.handle = m[1];
       result.url = `https://www.instagram.com/${m[1]}/`;
     }

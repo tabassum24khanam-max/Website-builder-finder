@@ -11,7 +11,7 @@
 //   2. a HARD haversine distance filter drops anything outside the radius.
 
 const {
-  serper, withTimeout, haversineKm, normalizeForMatch, cleanUrl, isSocialOrDirectory, tldCountryConflict,
+  serper, withTimeout, haversineKm, normalizeForMatch, cleanUrl, isSocialOrDirectory, extractSocialHandle, tldCountryConflict,
   bestPhone, pickPhone, normalizePhone, parseFollowers, verifyHandle, getCountryCode, cleanSearchName, trackCost,
 } = require('./util');
 const { geocodeBest } = require('./osm');
@@ -233,6 +233,14 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
       if (isChain(name)) { log(`⏭️  Chain/listing skipped: ${name}`); continue; }
       if (isAreaEcho(name, areaEchoText)) { log(`⏭️  Map label skipped: ${name}`); continue; }
 
+      // Small businesses often put an Instagram/TikTok/Linktree URL where the
+      // Maps "website" field goes (they never built a real site). That's
+      // first-party data straight off their own listing — trust it as a
+      // social handle directly, but NEVER store it as `website` (that would
+      // wrongly mark them as already having a site and skip the lead).
+      const mapsWebsite = cleanUrl(p.website);
+      const social = mapsWebsite && isSocialOrDirectory(mapsWebsite) ? extractSocialHandle(mapsWebsite) : null;
+
       candidates.push({
         dist: 9999,
         biz: {
@@ -244,13 +252,14 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
           // /maps probe results carry the number straight off the Google Maps
           // panel — the strongest source there is; enrichment must not outvote it.
           phoneFromMaps: mapsAuthoritative && !!(p.phoneNumber || p.phone),
-          website: cleanUrl(p.website),
+          website: social ? null : mapsWebsite,
           rating: p.rating || null,
           reviewCount: p.ratingCount || 0,
           lat: p.latitude || null,
           lng: p.longitude || null,
           photoUrl: p.thumbnailUrl || null,
-          instagramHint: null,
+          instagramHint: social?.platform === 'instagram' ? { handle: social.handle, url: `https://www.instagram.com/${social.handle}/` } : null,
+          tiktokHint: social?.platform === 'tiktok' ? social.handle : null,
           mapsUrl: p.cid
             ? `https://www.google.com/maps?cid=${p.cid}`
             : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name + ' ' + locationLabel)}`,
@@ -334,13 +343,18 @@ async function findBusinessesSerper({ category, city, neighborhood, zip, country
         const core = normalizeForMatch(b.name);
         if (core && candidates.some(c => normalizeForMatch(c.biz.name) === core)) continue;
         seen.set(key, true);
+        // osm.js already strips a social link out of b.website and lifts it
+        // into b.instagramHint/b.tiktokHint — carry those through instead of
+        // dropping them (a bare cleanUrl() here would silently discard them).
+        const osmWebsite = cleanUrl(b.website);
         candidates.push({
           dist: 9999,
           biz: {
             name: b.name, category: b.category || category, searchedCategory: category,
-            address: b.address || null, phone: normalizePhone(b.phone), website: cleanUrl(b.website),
+            address: b.address || null, phone: normalizePhone(b.phone),
+            website: (osmWebsite && isSocialOrDirectory(osmWebsite)) ? null : osmWebsite,
             rating: null, reviewCount: 0, lat: b.lat ?? null, lng: b.lng ?? null,
-            photoUrl: null, instagramHint: null,
+            photoUrl: null, instagramHint: b.instagramHint || null, tiktokHint: b.tiktokHint || null,
             mapsUrl: b.mapsUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.name + ' ' + (city || ''))}`,
           },
         });
@@ -420,9 +434,20 @@ async function enrichBusiness(business, location, country, log) {
     return business;
   }
 
-  // Knowledge graph (when present) is the most authoritative source.
+  // Knowledge graph (when present) is the most authoritative source. When its
+  // "website" is actually a social link, harvest the handle instead of just
+  // discarding it — it's first-party (Google's own knowledge panel for the
+  // business), so it doesn't need the search-snippet name-verification below.
   const kg = data.knowledgeGraph || {};
-  if (!business.website && kg.website && !isSocialOrDirectory(kg.website)) business.website = cleanUrl(kg.website);
+  if (kg.website && isSocialOrDirectory(kg.website)) {
+    if (!business.instagramHint) {
+      const social = extractSocialHandle(kg.website);
+      if (social?.platform === 'instagram') business.instagramHint = { handle: social.handle, url: `https://www.instagram.com/${social.handle}/` };
+      else if (social?.platform === 'tiktok' && !business.tiktokHint) business.tiktokHint = social.handle;
+    }
+  } else if (!business.website && kg.website) {
+    business.website = cleanUrl(kg.website);
+  }
   if (!business.address && kg.address) business.address = kg.address;
 
   const nameCore = normalizeForMatch(business.name);
@@ -505,6 +530,12 @@ async function backfillWebsitePhone(business, city, country, log) {
   catch { return business; }
   const kg = data.knowledgeGraph || {};
   const organic = data.organic || [];
+
+  if (kg.website && isSocialOrDirectory(kg.website) && !business.instagramHint) {
+    const social = extractSocialHandle(kg.website);
+    if (social?.platform === 'instagram') business.instagramHint = { handle: social.handle, url: `https://www.instagram.com/${social.handle}/` };
+    else if (social?.platform === 'tiktok' && !business.tiktokHint) business.tiktokHint = social.handle;
+  }
 
   if (!business.website) {
     if (kg.website && !isSocialOrDirectory(kg.website) && !tldCountryConflict(kg.website, getCountryCode(country))) business.website = cleanUrl(kg.website);

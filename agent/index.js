@@ -17,7 +17,7 @@ const { findInstagram } = require('./instagram');
 const { findPhone: phoneAgentFind } = require('./phone-agent');
 const { aiEnrich } = require('./ai-enrich');
 const { findTikTok } = require('./tiktok');
-const { withTimeout, delay, getCountryCode, isTollFreeNumber } = require('./util');
+const { withTimeout, delay, getCountryCode, isTollFreeNumber, normalizeForMatch } = require('./util');
 const { q } = require('../db');
 const { v4: uuid } = require('uuid');
 
@@ -33,24 +33,29 @@ function stopSearch(searchId) {
 }
 
 async function runSearch(searchConfig, broadcast) {
-  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only, neighborhood, zip, city, aiMode } = searchConfig;
+  const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only, neighborhood, zip, city, aiMode, excludeNames } = searchConfig;
   const cityLabel = city || location; // display/enrichment city
   const targetCount = limit_count || 20;
+  const isResearch = Array.isArray(excludeNames) && excludeNames.length > 0;
 
   const state = { stopped: false };
   activeSearches.set(searchId, state);
   const shouldStop = () => state.stopped;
   const log = (msg, level = 'info') => broadcast({ type: 'agent_log', searchId, level, message: msg });
 
-  log(`🚀 Starting search: "${category}" in ${location}${country ? ', ' + country : ''}`, 'success');
+  log(`🚀 ${isResearch ? 'Researching' : 'Starting search'}: "${category}" in ${location}${country ? ', ' + country : ''}${isResearch ? ` (excluding ${excludeNames.length} already found)` : ''}`, 'success');
   let leadsFound = 0;
 
   try {
-    const businesses = await discover({ category, city: cityLabel, neighborhood, zip, country, lat, lng, radius_km, limit_count, log });
+    const businesses = await discover({ category, city: cityLabel, neighborhood, zip, country, lat, lng, radius_km, limit_count, log, excludeNames });
     if (!businesses.length) {
-      log('❌  No businesses found. Try a different category or location.', 'error');
+      if (isResearch) {
+        log(`❌  No NEW businesses found within this radius — everything nearby was already in your list. Try increasing the radius.`, 'error');
+      } else {
+        log('❌  No businesses found. Try a different category or location.', 'error');
+      }
       q.updateSearchStatus.run({ id: searchId, status: 'done', leads_found: 0 });
-      broadcast({ type: 'search_complete', searchId, total: 0 });
+      broadcast({ type: 'search_complete', searchId, total: 0, researchMode: isResearch, noNewResults: isResearch });
       return;
     }
 
@@ -81,7 +86,7 @@ async function runSearch(searchConfig, broadcast) {
 
     q.updateSearchStatus.run({ id: searchId, status: state.stopped ? 'stopped' : 'done', leads_found: leadsFound });
     log(`\n✅ Search complete — ${leadsFound} leads saved`, 'success');
-    broadcast({ type: 'search_complete', searchId, total: leadsFound });
+    broadcast({ type: 'search_complete', searchId, total: leadsFound, researchMode: isResearch });
   } catch (err) {
     log(`❌ Fatal error: ${err.message}`, 'error');
     q.updateSearchStatus.run({ id: searchId, status: 'error', leads_found: leadsFound });
@@ -93,15 +98,30 @@ async function runSearch(searchConfig, broadcast) {
 
 // ── Discovery with fallbacks ─────────────────────────────────────────────────
 
-async function discover({ category, city, neighborhood, zip, country, lat, lng, radius_km, limit_count, log }) {
+async function discover({ category, city, neighborhood, zip, country, lat, lng, radius_km, limit_count, log, excludeNames }) {
   const tag = b => b.map(x => ({ ...x, instagramHint: x.instagramHint || null, searchedCategory: x.searchedCategory || category }));
+
+  // "Research this area" support: drop anything already found in an earlier
+  // round for this same spot BEFORE it reaches enrichment — that both keeps
+  // the list additive-only and avoids re-spending Serper credits re-checking
+  // a business we already have. If a whole path's results turn out to be
+  // entirely-already-seen, fall through to the next path (a wider net may
+  // still turn up something genuinely new nearby) instead of stopping.
+  const excludeSet = new Set((excludeNames || []).map(normalizeForMatch).filter(Boolean));
+  const dropExcluded = (list) => {
+    if (!excludeSet.size) return list;
+    const kept = list.filter(b => !excludeSet.has(normalizeForMatch(b.name)));
+    const dropped = list.length - kept.length;
+    if (dropped) log(`🔁 Research mode: skipped ${dropped} already-found business${dropped > 1 ? 'es' : ''}.`);
+    return kept;
+  };
 
   // 1. Google Places API (PRIMARY when a key is set) — returns the authoritative
   //    phone + website straight from Google Maps (the data you see in the app),
   //    which Serper does not expose. This is what makes the numbers correct.
   if (process.env.GOOGLE_PLACES_API_KEY) {
     try {
-      const b = await findBusinessesPlaces({ category, city, neighborhood, zip, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 20, log });
+      const b = dropExcluded(await findBusinessesPlaces({ category, city, neighborhood, zip, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: limit_count || 20, log }));
       if (b.length) return tag(b);
     } catch (e) { log(`⚠️  Google Places failed (${e.message}) — falling back.`, 'warn'); }
   }
@@ -109,7 +129,7 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
   // 2. Serper /places — neighborhood in `q`, ll pin + locality filter (free path,
   //    but Google Maps phone/website are not available here).
   try {
-    const b = await findBusinessesSerper({ category, city, neighborhood, zip, country, lat, lng, radiusKm: radius_km || 10, limit: limit_count || 20, log });
+    const b = dropExcluded(await findBusinessesSerper({ category, city, neighborhood, zip, country, lat, lng, radiusKm: radius_km || 10, limit: limit_count || 20, log }));
     if (b.length) return tag(b);
   } catch (e) { log(`⚠️  Serper Places failed: ${e.message}`, 'warn'); }
 
@@ -120,11 +140,12 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
   try {
     const loc = [neighborhood, city].filter(Boolean).join(', ') || zip || city;
     const raw = await findBusinessesOSM({ category, location: loc, country, lat: lat || null, lng: lng || null, radius_km: radius_km || 5, limit: (limit_count || 30) * 2, noWebsiteOnly: false, log });
-    const b = raw.filter(x => {
+    const filtered = raw.filter(x => {
       if (isChain(x.name)) { log(`⏭️  Chain skipped: ${x.name}`); return false; }
       if (isAreaEcho(x.name, `${neighborhood || ''} ${zip || ''} ${city || ''} ${country || ''}`)) { log(`⏭️  Map label skipped: ${x.name}`); return false; }
       return true;
     }).slice(0, limit_count || 30);
+    const b = dropExcluded(filtered);
     if (b.length) return tag(b);
   } catch (e) { log(`⚠️  OpenStreetMap also failed: ${e.message}`, 'warn'); }
 
@@ -184,7 +205,9 @@ async function processBusiness(biz, { location, country, no_website_only, aiMode
     if (shouldStop()) return null;
 
     // 2a — TikTok handle (a quick targeted search, strictly name-verified).
-    tiktok = await withTimeout(findTikTok({ name: biz.name, city: location, country }, log), 25000, tiktok);
+    // A handle already lifted straight off the Maps listing's "website" field
+    // (biz.tiktokHint) is first-party — trust it without an extra search.
+    tiktok = await withTimeout(findTikTok({ name: biz.name, city: location, country, hint: biz.tiktokHint }, log), 25000, tiktok);
     if (shouldStop()) return null;
 
     // 2b — backfill: a second name+city query catches website/phone the first missed.

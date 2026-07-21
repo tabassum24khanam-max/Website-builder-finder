@@ -2,7 +2,7 @@
 // One API call returns name, phone, address, website, coords, photo — no scraping
 
 const https = require('https');
-const { haversineKm } = require('./util');
+const { haversineKm, isSocialOrDirectory, extractSocialHandle } = require('./util');
 
 const PLACES_BASE = 'https://places.googleapis.com/v1';
 
@@ -149,6 +149,11 @@ async function findBusinessesPlaces({ category, location, city, neighborhood, zi
     if (typeof plat === 'number' && typeof plng === 'number') {
       if (haversineKm(centerLat, centerLng, plat, plng) > filterKm) continue;
     }
+    // Some tiny businesses list an Instagram/TikTok link as their Google Maps
+    // "website" (no real site) — first-party data, so trust it as a social
+    // handle directly instead of letting it masquerade as a website.
+    const placeWebsite = place.websiteUri || null;
+    const social = placeWebsite && isSocialOrDirectory(placeWebsite) ? extractSocialHandle(placeWebsite) : null;
     out.push({
       name,
       category,
@@ -156,13 +161,14 @@ async function findBusinessesPlaces({ category, location, city, neighborhood, zi
       address: place.formattedAddress || null,
       // Authoritative — straight from Google Maps (the number/site you see in the app).
       phone: place.nationalPhoneNumber || place.internationalPhoneNumber || null,
-      website: place.websiteUri || null,
+      website: social ? null : placeWebsite,
       rating: place.rating || null,
       reviewCount: place.userRatingCount || 0,
       lat: plat || null,
       lng: plng || null,
       photoUrl: null,
-      instagramHint: null,
+      instagramHint: social?.platform === 'instagram' ? { handle: social.handle, url: `https://www.instagram.com/${social.handle}/` } : null,
+      tiktokHint: social?.platform === 'tiktok' ? social.handle : null,
       fromPlaces: true, // tells the pipeline the phone/website are already authoritative
       mapsUrl: place.id
         ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&query_place_id=${place.id}`

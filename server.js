@@ -88,6 +88,7 @@ app.post('/api/searches', (req, res) => {
     radius_km, radius, limit_count, count,
     lat, lng, zip, street,
     no_website_only = true, ai_mode = false,
+    exclude_names,
   } = req.body;
   const effectiveRadius = parseInt(radius_km || radius) || 5;
   const effectiveCount = parseInt(limit_count || count) || 20;
@@ -117,6 +118,7 @@ app.post('/api/searches', (req, res) => {
   search.lng = parseFloat(lng) || null;
   search.no_website_only = !!no_website_only;
   search.aiMode = !!ai_mode;
+  search.excludeNames = Array.isArray(exclude_names) ? exclude_names.filter(n => typeof n === 'string' && n.trim()).slice(0, 500) : [];
   search.neighborhood = neighborhood;
   search.city = city || null;
   search.zip = zipCode || null;
