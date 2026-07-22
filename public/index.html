@@ -1066,6 +1066,9 @@
             <span class="panel-title">📍 Leads Found <span class="count-badge" id="live-lead-count">0</span></span>
           </div>
           <div class="live-leads-grid" id="live-leads-grid"></div>
+          <!-- Post-search action bar (mirrors export-btns up top so the user
+               doesn't have to scroll all the way back up after a long search) -->
+          <div id="post-search-actions" style="display:none;flex-wrap:wrap;gap:8px;padding:14px 16px;border-top:1px solid var(--border);margin-top:8px;align-items:center;"></div>
         </div>
       </div>
     </div>
@@ -1525,6 +1528,12 @@ async function startSearch(opts = {}) {
     document.getElementById('live-lead-count').textContent = '0';
     document.getElementById('live-leads-grid').innerHTML = '';
   }
+  // A fresh run wipes the completion action bars from the previous search
+  // (mirrored top + bottom). They come back in showExportButtons() when done.
+  const topBtns = document.getElementById('export-btns');
+  if (topBtns) { topBtns.style.display = 'none'; topBtns.innerHTML = ''; }
+  const bottomBtns = document.getElementById('post-search-actions');
+  if (bottomBtns) { bottomBtns.style.display = 'none'; bottomBtns.innerHTML = ''; }
   showLogPanel();
   showLiveLeadsPanel();
   setStatus('searching', 'Searching…');
@@ -1699,20 +1708,34 @@ function updateStatusBar(text, spinning = true) {
 }
 
 function showExportButtons(searchId, opts = {}) {
-  const wrap = document.getElementById('export-btns');
-  wrap.style.display = 'flex';
-  wrap.style.flexWrap = 'wrap';
-  wrap.innerHTML = `
+  const buttonsHtml = `
+    <button class="btn btn-amber btn-sm" type="button" onclick="researchThisArea(false)" title="Search this exact area again, skipping everything already found">🔁 Research this area</button>
     <a class="btn btn-ghost btn-sm" href="/api/export/${searchId}/excel" target="_blank">📥 Export Excel</a>
     <a class="btn btn-ghost btn-sm" href="/api/export/${searchId}/pdf" target="_blank">📄 Export PDF</a>
-    <button class="btn btn-ghost btn-sm" type="button" onclick="researchThisArea(false)" title="Search this exact area again, skipping everything already found">🔁 Research this area</button>
   `;
-  if (opts.noNewResults) {
-    const prompt = document.createElement('div');
-    prompt.style.cssText = 'width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:rgba(255,255,255,0.03);font-size:13px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;';
-    prompt.innerHTML = `<span>No new businesses within this radius — everything nearby is already in your list.</span>
-      <button class="btn btn-amber btn-sm" type="button" onclick="researchThisArea(true)">📏 Increase radius &amp; research again</button>`;
-    wrap.appendChild(prompt);
+  const noNewHtml = opts.noNewResults ? `
+    <div style="width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:rgba(255,255,255,0.03);font-size:13px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span>No new businesses within this radius — everything nearby is already in your list.</span>
+      <button class="btn btn-amber btn-sm" type="button" onclick="researchThisArea(true)">📏 Increase radius &amp; research again</button>
+    </div>` : '';
+
+  // Top of page (page-header) — visible if the user is at the top.
+  const top = document.getElementById('export-btns');
+  top.style.display = 'flex';
+  top.style.flexWrap = 'wrap';
+  top.innerHTML = buttonsHtml + noNewHtml;
+
+  // Bottom of page (post-search-actions, inside the live-leads panel) —
+  // this is where the user actually is after a search runs; scrolling back
+  // to the header on mobile is slow, and long lead lists made the top
+  // buttons effectively invisible. Mirror them here so they're one tap away.
+  const bottom = document.getElementById('post-search-actions');
+  if (bottom) {
+    bottom.style.display = 'flex';
+    bottom.innerHTML = `<span style="font-size:12.5px;color:var(--text-dim);margin-right:auto;">✅ Search done — ${opts.researchMode ? 'research round complete' : 'ready for follow-ups'}:</span>` + buttonsHtml + noNewHtml;
+    // Nudge the completion bar into view (a long search leaves the user well
+    // below it). smooth-scroll rather than jump so they don't lose orientation.
+    try { bottom.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
   }
 }
 
