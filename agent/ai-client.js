@@ -3,11 +3,9 @@
 // The provider is chosen by which key is configured (DeepSeek wins when both
 // are set — it's the cheap option, so setting its key is an explicit choice):
 //
-//   DEEPSEEK_API_KEY → https://api.deepseek.com  model: deepseek-chat
-//                      (DeepSeek's OpenAI-compatible API; "deepseek-chat"
-//                      always points at their latest chat model and supports
-//                      function calling, which the agents need. The reasoner
-//                      model does NOT support tools — don't use it here.)
+//   DEEPSEEK_API_KEY → https://api.deepseek.com  model: deepseek-v4-flash
+//                      (DeepSeek's OpenAI-compatible API; supports function
+//                      calling, which the agents need.)
 //   OPENAI_API_KEY   → api.openai.com  models per OPENAI_MODEL / AI_MODE_MODEL
 //
 // getAI(kind, opts) → { client, model, fallbackModel, provider } or null when
@@ -30,7 +28,7 @@ function getAI(kind = 'fast', { timeoutMs = 30000, maxRetries = 0 } = {}) {
     provider = 'deepseek';
     baseURL = process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com';
     apiKey = dsKey;
-    model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+    model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
     fallbackModel = model;
   } else if (oaKey && !PLACEHOLDER.test(oaKey)) {
     provider = 'openai';
