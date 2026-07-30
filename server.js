@@ -23,6 +23,11 @@ const wss = new WebSocketServer({ server });
 
 const PORT = process.env.PORT || 3000;
 
+// Railway terminates TLS at its edge proxy, so without this Express sees the
+// hop as plain HTTP, `req.secure` stays false, and session cookies marked
+// `secure` are silently never set — i.e. nobody can stay logged in.
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(session({
   store: new SqliteSessionStore(),
@@ -64,6 +69,12 @@ function broadcast(data) {
 
 app.get('/api/config', (req, res) => {
   res.json({ googleMapsKey: process.env.GOOGLE_MAPS_API_KEY || '' });
+});
+
+// Deploy healthcheck (railway.toml). Must stay PUBLIC — it used to point at
+// /api/stats, which broke the deploy the moment that route required a login.
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true });
 });
 
 // Resolve a pasted Google Maps link / Plus Code / lat,lng / address → coordinates
