@@ -13,6 +13,7 @@ const { q } = require('./db');
 const { getTier } = require('./db/tiers');
 const SqliteSessionStore = require('./db/session-store');
 const authRouter = require('./routes/auth');
+const billingRouter = require('./routes/billing');
 const { requireAuth } = require('./middleware/auth');
 const { runSearch, stopSearch } = require('./agent');
 
@@ -37,6 +38,7 @@ app.use(session({
   },
 }));
 app.use('/api/auth', authRouter);
+app.use('/api/billing', billingRouter);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── WebSocket broadcast helpers ────────────────────────────────────────────
