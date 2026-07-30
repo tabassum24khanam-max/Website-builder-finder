@@ -10,8 +10,10 @@ const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 
 const { q } = require('./db');
+const { getTier } = require('./db/tiers');
 const SqliteSessionStore = require('./db/session-store');
 const authRouter = require('./routes/auth');
+const { requireAuth } = require('./middleware/auth');
 const { runSearch, stopSearch } = require('./agent');
 
 const app = express();
@@ -83,23 +85,43 @@ app.get('/api/resolve-location', async (req, res) => {
 
 // ─── Searches ────────────────────────────────────────────────────────────────
 
-app.get('/api/searches', (req, res) => {
-  res.json(q.listSearches.all());
+app.get('/api/searches', requireAuth, (req, res) => {
+  res.json(q.listSearchesByUser.all(req.user.id));
 });
 
-app.get('/api/searches/:id', (req, res) => {
+app.get('/api/searches/:id', requireAuth, (req, res) => {
   const search = q.getSearch.get(req.params.id);
-  if (!search) return res.status(404).json({ error: 'Not found' });
+  if (!search || search.user_id !== req.user.id) return res.status(404).json({ error: 'Not found' });
   const leads = q.getLeadsBySearch.all(req.params.id);
   res.json({ ...search, leads });
 });
 
-app.delete('/api/searches/:id', (req, res) => {
+app.delete('/api/searches/:id', requireAuth, (req, res) => {
+  const search = q.getSearch.get(req.params.id);
+  if (!search || search.user_id !== req.user.id) return res.status(404).json({ error: 'Not found' });
   q.deleteSearch.run(req.params.id);
   res.json({ success: true });
 });
 
-app.post('/api/searches', (req, res) => {
+// Checks the caller's plan before a search starts, and resets the monthly
+// counter if the current billing period has ended. Free tier has no period —
+// its cap is lifetime, not monthly.
+function checkQuota(user) {
+  const sub = q.getSubscriptionByUserId.get(user.id);
+  const tier = getTier(sub.tier);
+
+  if (tier.monthlySearches != null && sub.period_end && new Date(sub.period_end) < new Date()) {
+    q.resetSearchUsage.run({ user_id: user.id, period_start: new Date().toISOString(), period_end: sub.period_end });
+    sub.searches_used = 0;
+  }
+
+  const monthly = tier.monthlySearches != null;
+  const used = monthly ? sub.searches_used : sub.searches_used_lifetime;
+  const cap = monthly ? tier.monthlySearches : tier.lifetimeSearches;
+  return { tier, used, cap, ok: cap == null || used < cap };
+}
+
+app.post('/api/searches', requireAuth, (req, res) => {
   const {
     category, location, country = '',
     radius_km, radius, limit_count, count,
@@ -109,6 +131,16 @@ app.post('/api/searches', (req, res) => {
   } = req.body;
   const effectiveRadius = parseInt(radius_km || radius) || 5;
   const effectiveCount = parseInt(limit_count || count) || 20;
+
+  const quota = checkQuota(req.user);
+  if (!quota.ok) {
+    return res.status(402).json({
+      error: `You've used all ${quota.cap} searches on the ${quota.tier.label} plan.`,
+      tier: quota.tier.label, used: quota.used, cap: quota.cap,
+    });
+  }
+  // Never trust the client's ai_mode flag — only what the plan actually allows.
+  const aiModeAllowed = !!ai_mode && quota.tier.aiMode;
 
   // Keep the structured location parts separate — the agent geocodes the most
   // specific combination (neighborhood/zip/city) for a precise center and a hard
@@ -127,15 +159,16 @@ app.post('/api/searches', (req, res) => {
   q.insertSearch.run({
     id: searchId, category, location: cleanLocation, country,
     radius_km: effectiveRadius, limit_count: effectiveCount,
-    user_id: (req.session && req.session.userId) || null,
+    user_id: req.user.id,
   });
+  q.incrementSearchUsage.run(req.user.id);
   const search = q.getSearch.get(searchId);
 
   // Attach extra fields the agent needs but aren't in the DB schema
   search.lat = parseFloat(lat) || null;
   search.lng = parseFloat(lng) || null;
   search.no_website_only = !!no_website_only;
-  search.aiMode = !!ai_mode;
+  search.aiMode = aiModeAllowed;
   search.excludeNames = Array.isArray(exclude_names) ? exclude_names.filter(n => typeof n === 'string' && n.trim()).slice(0, 500) : [];
   search.neighborhood = neighborhood;
   search.city = city || null;
@@ -150,28 +183,35 @@ app.post('/api/searches', (req, res) => {
   });
 });
 
-app.post('/api/searches/:id/stop', (req, res) => {
+app.post('/api/searches/:id/stop', requireAuth, (req, res) => {
+  const search = q.getSearch.get(req.params.id);
+  if (!search || search.user_id !== req.user.id) return res.status(404).json({ error: 'Not found' });
   stopSearch(req.params.id);
   res.json({ success: true });
 });
 
 // ─── Leads ───────────────────────────────────────────────────────────────────
 
-app.get('/api/leads', (req, res) => {
-  const { db } = require('./db');
-  const leads = db.prepare('SELECT * FROM leads ORDER BY scraped_at DESC').all();
-  res.json(leads);
+// A lead has no owner column of its own — ownership is via its search.
+function leadBelongsToUser(lead, userId) {
+  if (!lead) return false;
+  const search = q.getSearch.get(lead.search_id);
+  return !!search && search.user_id === userId;
+}
+
+app.get('/api/leads', requireAuth, (req, res) => {
+  res.json(q.listLeadsByUser.all(req.user.id));
 });
 
-app.get('/api/leads/:id', (req, res) => {
+app.get('/api/leads/:id', requireAuth, (req, res) => {
   const lead = q.getLead.get(req.params.id);
-  if (!lead) return res.status(404).json({ error: 'Not found' });
+  if (!leadBelongsToUser(lead, req.user.id)) return res.status(404).json({ error: 'Not found' });
   res.json(lead);
 });
 
-app.put('/api/leads/:id', (req, res) => {
+app.put('/api/leads/:id', requireAuth, (req, res) => {
   const lead = q.getLead.get(req.params.id);
-  if (!lead) return res.status(404).json({ error: 'Not found' });
+  if (!leadBelongsToUser(lead, req.user.id)) return res.status(404).json({ error: 'Not found' });
   const { status, notes } = req.body;
   // Accept both naming conventions — older clients sent camelCase.
   const outreach_message = req.body.outreach_message ?? req.body.outreachMessage;
@@ -185,23 +225,30 @@ app.put('/api/leads/:id', (req, res) => {
   res.json({ success: true });
 });
 
-app.delete('/api/leads/:id', (req, res) => {
+app.delete('/api/leads/:id', requireAuth, (req, res) => {
+  const lead = q.getLead.get(req.params.id);
+  if (!leadBelongsToUser(lead, req.user.id)) return res.status(404).json({ error: 'Not found' });
   q.deleteLead.run(req.params.id);
   res.json({ success: true });
 });
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
 
-app.get('/api/stats', (req, res) => {
-  res.json(q.stats.get());
+app.get('/api/stats', requireAuth, (req, res) => {
+  res.json(q.statsByUser.get(req.user.id));
 });
 
 // ─── Exports ─────────────────────────────────────────────────────────────────
 
-app.get('/api/export/:searchId/excel', async (req, res) => {
-  const leads = req.params.searchId === 'all'
-    ? require('./db').db.prepare('SELECT * FROM leads ORDER BY ai_score DESC').all()
-    : q.getLeadsBySearch.all(req.params.searchId);
+app.get('/api/export/:searchId/excel', requireAuth, async (req, res) => {
+  let leads;
+  if (req.params.searchId === 'all') {
+    leads = q.listLeadsByUser.all(req.user.id);
+  } else {
+    const search = q.getSearch.get(req.params.searchId);
+    if (!search || search.user_id !== req.user.id) return res.status(404).json({ error: 'Not found' });
+    leads = q.getLeadsBySearch.all(req.params.searchId);
+  }
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet('Leads');
@@ -257,10 +304,15 @@ app.get('/api/export/:searchId/excel', async (req, res) => {
   res.end();
 });
 
-app.get('/api/export/:searchId/pdf', async (req, res) => {
-  const leads = req.params.searchId === 'all'
-    ? require('./db').db.prepare('SELECT * FROM leads ORDER BY ai_score DESC').all()
-    : q.getLeadsBySearch.all(req.params.searchId);
+app.get('/api/export/:searchId/pdf', requireAuth, async (req, res) => {
+  let leads;
+  if (req.params.searchId === 'all') {
+    leads = q.listLeadsByUser.all(req.user.id);
+  } else {
+    const search = q.getSearch.get(req.params.searchId);
+    if (!search || search.user_id !== req.user.id) return res.status(404).json({ error: 'Not found' });
+    leads = q.getLeadsBySearch.all(req.params.searchId);
+  }
 
   const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
   res.setHeader('Content-Type', 'application/pdf');

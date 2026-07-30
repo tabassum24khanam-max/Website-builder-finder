@@ -171,6 +171,10 @@ const q = {
   getLead:          db.prepare('SELECT * FROM leads WHERE id = ?'),
   getLeadsBySearch: db.prepare('SELECT * FROM leads WHERE search_id = ? ORDER BY ai_score DESC'),
   deleteLead:       db.prepare('DELETE FROM leads WHERE id = ?'),
+  listLeadsByUser:  db.prepare(`
+    SELECT leads.* FROM leads JOIN searches ON leads.search_id = searches.id
+    WHERE searches.user_id = ? ORDER BY leads.scraped_at DESC
+  `),
 
   stats: db.prepare(`
     SELECT
@@ -182,6 +186,18 @@ const q = {
       SUM(CASE WHEN status = 'contacted' THEN 1 ELSE 0 END) as contacted,
       SUM(CASE WHEN status = 'converted' THEN 1 ELSE 0 END) as converted
     FROM leads
+  `),
+  statsByUser: db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN leads.website_status = 'none' OR leads.website IS NULL OR leads.website = '' THEN 1 ELSE 0 END) as no_website,
+      SUM(CASE WHEN leads.ai_score >= 7 THEN 1 ELSE 0 END) as high_score,
+      SUM(CASE WHEN leads.email IS NOT NULL AND leads.email != '' THEN 1 ELSE 0 END) as has_email,
+      SUM(CASE WHEN leads.instagram_handle IS NOT NULL THEN 1 ELSE 0 END) as has_instagram,
+      SUM(CASE WHEN leads.status = 'contacted' THEN 1 ELSE 0 END) as contacted,
+      SUM(CASE WHEN leads.status = 'converted' THEN 1 ELSE 0 END) as converted
+    FROM leads JOIN searches ON leads.search_id = searches.id
+    WHERE searches.user_id = ?
   `),
 };
 
