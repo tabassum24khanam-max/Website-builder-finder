@@ -16,8 +16,36 @@ try { db.exec('ALTER TABLE leads ADD COLUMN photo_url TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN owner_phone TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN tiktok_handle TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN tiktok_url TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE searches ADD COLUMN user_id TEXT'); } catch (_) {}
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    email         TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    id                     TEXT PRIMARY KEY,
+    user_id                TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    tier                   TEXT NOT NULL DEFAULT 'free',
+    status                 TEXT NOT NULL DEFAULT 'active',
+    paypal_subscription_id TEXT,
+    period_start           DATETIME,
+    period_end             DATETIME,
+    searches_used          INTEGER NOT NULL DEFAULT 0,
+    searches_used_lifetime INTEGER NOT NULL DEFAULT 0,
+    created_at             DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at             DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    sid     TEXT PRIMARY KEY,
+    data    TEXT NOT NULL,
+    expires INTEGER NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS searches (
     id         TEXT PRIMARY KEY,
     category   TEXT NOT NULL,
@@ -74,21 +102,50 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_leads_search ON leads(search_id);
   CREATE INDEX IF NOT EXISTS idx_leads_score  ON leads(ai_score DESC);
+  CREATE INDEX IF NOT EXISTS idx_searches_user ON searches(user_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
 `);
 
 const q = {
+  insertUser:     db.prepare('INSERT INTO users (id, email, password_hash) VALUES (@id, @email, @password_hash)'),
+  getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
+  getUserById:    db.prepare('SELECT * FROM users WHERE id = ?'),
+
+  insertSubscription: db.prepare(`
+    INSERT INTO subscriptions (id, user_id, tier, status) VALUES (@id, @user_id, @tier, @status)
+  `),
+  getSubscriptionByUserId: db.prepare('SELECT * FROM subscriptions WHERE user_id = ?'),
+  updateSubscriptionTier: db.prepare(`
+    UPDATE subscriptions
+    SET tier = @tier, status = @status, paypal_subscription_id = @paypal_subscription_id,
+        period_start = @period_start, period_end = @period_end, updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = @user_id
+  `),
+  incrementSearchUsage: db.prepare(`
+    UPDATE subscriptions
+    SET searches_used = searches_used + 1, searches_used_lifetime = searches_used_lifetime + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = ?
+  `),
+  resetSearchUsage: db.prepare(`
+    UPDATE subscriptions
+    SET searches_used = 0, period_start = @period_start, period_end = @period_end, updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = @user_id
+  `),
+
   insertSearch: db.prepare(`
-    INSERT INTO searches (id, category, location, country, radius_km, limit_count)
-    VALUES (@id, @category, @location, @country, @radius_km, @limit_count)
+    INSERT INTO searches (id, category, location, country, radius_km, limit_count, user_id)
+    VALUES (@id, @category, @location, @country, @radius_km, @limit_count, @user_id)
   `),
   updateSearchStatus: db.prepare(`
     UPDATE searches
     SET status = @status, leads_found = @leads_found, completed_at = CURRENT_TIMESTAMP
     WHERE id = @id
   `),
-  getSearch:     db.prepare('SELECT * FROM searches WHERE id = ?'),
-  listSearches:  db.prepare('SELECT * FROM searches ORDER BY created_at DESC'),
-  deleteSearch:  db.prepare('DELETE FROM searches WHERE id = ?'),
+  getSearch:         db.prepare('SELECT * FROM searches WHERE id = ?'),
+  listSearches:      db.prepare('SELECT * FROM searches ORDER BY created_at DESC'),
+  listSearchesByUser: db.prepare('SELECT * FROM searches WHERE user_id = ? ORDER BY created_at DESC'),
+  deleteSearch:      db.prepare('DELETE FROM searches WHERE id = ?'),
 
   insertLead: db.prepare(`
     INSERT INTO leads (

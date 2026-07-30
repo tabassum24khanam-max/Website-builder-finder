@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
+const session = require('express-session');
 const { WebSocketServer } = require('ws');
 const { createServer } = require('http');
 const path = require('path');
@@ -9,6 +10,8 @@ const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 
 const { q } = require('./db');
+const SqliteSessionStore = require('./db/session-store');
+const authRouter = require('./routes/auth');
 const { runSearch, stopSearch } = require('./agent');
 
 const app = express();
@@ -18,6 +21,20 @@ const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(session({
+  store: new SqliteSessionStore(),
+  name: 'lh_sid',
+  secret: process.env.SESSION_SECRET || 'dev-only-insecure-secret-change-me',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  },
+}));
+app.use('/api/auth', authRouter);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── WebSocket broadcast helpers ────────────────────────────────────────────
@@ -110,6 +127,7 @@ app.post('/api/searches', (req, res) => {
   q.insertSearch.run({
     id: searchId, category, location: cleanLocation, country,
     radius_km: effectiveRadius, limit_count: effectiveCount,
+    user_id: (req.session && req.session.userId) || null,
   });
   const search = q.getSearch.get(searchId);
 
@@ -302,5 +320,8 @@ server.listen(PORT, () => {
     console.log('  ⚠️  No AI key set (DEEPSEEK_API_KEY or OPENAI_API_KEY) — AI phone hunting and AI deep search are off.\n');
   } else {
     console.log(`  ✅ AI provider: ${ai.provider} (model: ${ai.model})\n`);
+  }
+  if (!process.env.SESSION_SECRET && process.env.NODE_ENV === 'production') {
+    console.log('  ⚠️  No SESSION_SECRET set — using an insecure default. Set one in Railway env vars before real users log in.\n');
   }
 });
