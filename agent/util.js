@@ -99,19 +99,35 @@ function serperRaw(path, body, apiKey, timeoutMs = 12000) {
 }
 
 async function serper(path, body, apiKey, timeoutMs = 12000) {
-  try {
-    if (!apiKey && path === '/search') throw new Error('no serper key');
-    return await serperRaw(path, body, apiKey, timeoutMs);
-  } catch (e) {
-    if (path === '/search') {
-      try {
-        const { freeSearch } = require('./free-search'); // lazy: avoids require cycles
-        const r = await freeSearch(String(body.q || ''), { num: body.num || 10 });
-        if (r.organic.length) return { organic: r.organic, _free: r.source };
-      } catch {}
+  // Try every healthy account in the pool (SERPER_API_KEY, SERPER_API_KEY_2, ...)
+  // before degrading — see serper-pool.js. Falls back to just `apiKey` alone
+  // when no pool is configured, so single-key setups behave exactly as before.
+  const { healthyKeys, markDead, isQuotaOrAuthError } = require('./serper-pool');
+  const pool = healthyKeys();
+  const keysToTry = pool.length ? pool : (apiKey ? [apiKey] : []);
+
+  let lastErr = keysToTry.length ? null : new Error('no serper key');
+  for (const key of keysToTry) {
+    try {
+      return await serperRaw(path, body, key, timeoutMs);
+    } catch (e) {
+      lastErr = e;
+      if (isQuotaOrAuthError(e.message) && keysToTry.length > 1) {
+        markDead(key, e.message);
+        continue; // this account is spent/invalid — try the next one
+      }
+      break; // network/timeout error, or only one key available — no point rotating
     }
-    throw e;
   }
+
+  if (path === '/search') {
+    try {
+      const { freeSearch } = require('./free-search'); // lazy: avoids require cycles
+      const r = await freeSearch(String(body.q || ''), { num: body.num || 10 });
+      if (r.organic.length) return { organic: r.organic, _free: r.source };
+    } catch {}
+  }
+  throw lastErr;
 }
 
 // ── Name normalization (for matching handles / domains to a business) ────────

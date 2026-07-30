@@ -321,6 +321,14 @@ server.listen(PORT, () => {
   } else {
     console.log(`  ✅ AI provider: ${ai.provider} (model: ${ai.model})\n`);
   }
+  const serperKeys = require('./agent/serper-pool').loadKeys();
+  if (serperKeys.length > 1) {
+    console.log(`  ✅ Serper account pool: ${serperKeys.length} keys (auto-rotates on credit exhaustion)\n`);
+  } else if (serperKeys.length === 1) {
+    console.log('  ℹ️  Serper: 1 key set — add SERPER_API_KEY_2, _3, ... for automatic fallback accounts.\n');
+  } else {
+    console.log('  ⚠️  No SERPER_API_KEY set — discovery falls back to OpenStreetMap (lower quality).\n');
+  }
   if (!process.env.SESSION_SECRET && process.env.NODE_ENV === 'production') {
     console.log('  ⚠️  No SESSION_SECRET set — using an insecure default. Set one in Railway env vars before real users log in.\n');
   }
