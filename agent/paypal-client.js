@@ -110,4 +110,19 @@ async function createProductAndPlans() {
   return { productId: product.id, plans };
 }
 
-module.exports = { getAccessToken, api, getSubscription, verifyWebhookSignature, createProductAndPlans };
+// Registers a webhook subscription pointed at our /api/billing/webhook route,
+// scoped to just the events routes/billing.js actually handles.
+async function createWebhook(url) {
+  return api('POST', '/v1/notifications/webhooks', {
+    url,
+    event_types: [
+      { name: 'BILLING.SUBSCRIPTION.ACTIVATED' },
+      { name: 'BILLING.SUBSCRIPTION.CANCELLED' },
+      { name: 'BILLING.SUBSCRIPTION.EXPIRED' },
+      { name: 'BILLING.SUBSCRIPTION.SUSPENDED' },
+      { name: 'PAYMENT.SALE.COMPLETED' },
+    ],
+  });
+}
+
+module.exports = { getAccessToken, api, getSubscription, verifyWebhookSignature, createProductAndPlans, createWebhook };
