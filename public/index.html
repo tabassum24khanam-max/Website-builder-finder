@@ -852,6 +852,26 @@
     .modal-split-body { flex-direction: column; }
     .modal-map-side { width: 100%; min-width: 0; height: 240px; min-height: 240px; border-left: none; border-top: 1px solid var(--border); }
   }
+
+  /* Pricing modal responsive */
+  @media (max-width: 768px) {
+    #upgrade-panel { padding: 20px 12px !important; }
+    #upgrade-panel > div { margin-top: 60px !important; }
+  }
+
+  /* PayPal button container styling */
+  #paypal-btn-starter,
+  #paypal-btn-pro {
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #paypal-btn-starter iframe,
+  #paypal-btn-pro iframe {
+    border-radius: 6px !important;
+  }
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -891,24 +911,155 @@
     </div>
   </div>
 </div>
-<!-- Minimal upgrade panel — placeholder until the real pricing UI ships. -->
-<div id="upgrade-panel" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);overflow-y:auto;" onclick="if(event.target===this)closeUpgrade();">
-  <div class="panel" style="max-width:460px;margin:10vh auto 0;">
-    <div class="panel-header">
-      <span class="panel-title">Upgrade Plan</span>
-      <a href="#" onclick="closeUpgrade();return false;" style="color:var(--text-dim);">✕</a>
-    </div>
-    <div style="padding:20px;">
-      <div id="upgrade-msg" style="font-size:13px;color:var(--text-dim);margin-bottom:16px;display:none;"></div>
-      <div style="margin-bottom:20px;">
-        <div style="font-weight:600;margin-bottom:4px;">Starter — $9/mo</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">60 searches/month</div>
-        <div id="paypal-btn-starter"></div>
+<!-- Enhanced pricing modal with feature comparison -->
+<div id="upgrade-panel" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);overflow-y:auto;padding:40px 20px;" onclick="if(event.target===this)closeUpgrade();">
+  <div style="max-width:1000px;margin:0 auto;">
+    <!-- Header -->
+    <div style="text-align:center;margin-bottom:40px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2 style="font-size:28px;font-weight:700;color:var(--text);">Choose Your Plan</h2>
+        <a href="#" onclick="closeUpgrade();return false;" style="font-size:28px;color:var(--text-dim);cursor:pointer;text-decoration:none;">✕</a>
       </div>
-      <div>
-        <div style="font-weight:600;margin-bottom:4px;">Pro — $19.99/mo</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">150 searches/month + AI deep search</div>
-        <div id="paypal-btn-pro"></div>
+      <p style="color:var(--text-dim);font-size:14px;">Find qualified leads in 60 seconds. Upgrade anytime, cancel anytime.</p>
+      <div id="upgrade-msg" style="font-size:13px;color:var(--red);margin-top:12px;display:none;background:rgba(239,68,68,0.1);padding:10px 16px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);"></div>
+    </div>
+
+    <!-- Pricing cards grid -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-bottom:40px;">
+      <!-- Free tier (info only) -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;display:flex;flex-direction:column;position:relative;">
+        <div style="margin-bottom:20px;">
+          <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px;">Free</div>
+          <div style="color:var(--text-dim);font-size:13px;">For testing</div>
+        </div>
+        <div style="font-size:32px;font-weight:700;color:var(--text);margin-bottom:4px;">$0<span style="font-size:14px;color:var(--text-dim);font-weight:500;">/mo</span></div>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:24px;">5 searches lifetime</div>
+        <div style="background:rgba(240,165,0,0.08);color:var(--amber);padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;text-align:center;margin-bottom:24px;border:1px solid rgba(240,165,0,0.2);">Your current plan</div>
+        <div style="flex:1;border-top:1px solid var(--border);padding-top:24px;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:12px;">INCLUDES:</div>
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text-dim);">
+            <div>✓ 5 lifetime searches</div>
+            <div>✓ Basic business discovery</div>
+            <div>✓ Phone & contact info</div>
+            <div>✓ Social media handles</div>
+            <div style="opacity:0.5;">✗ AI deep search</div>
+            <div style="opacity:0.5;">✗ Email discovery</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Starter tier -->
+      <div style="background:var(--surface);border:1px solid var(--amber);border-radius:12px;padding:28px;display:flex;flex-direction:column;position:relative;box-shadow:0 0 20px rgba(240,165,0,0.15);">
+        <div style="position:absolute;top:-12px;left:20px;background:var(--amber);color:var(--bg);padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;">POPULAR</div>
+        <div style="margin-bottom:20px;">
+          <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px;">Starter</div>
+          <div style="color:var(--text-dim);font-size:13px;">For freelancers & small teams</div>
+        </div>
+        <div style="font-size:32px;font-weight:700;color:var(--text);margin-bottom:4px;">$9<span style="font-size:14px;color:var(--text-dim);font-weight:500;">/mo</span></div>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:24px;">60 searches/month (720/year)</div>
+        <div id="paypal-btn-starter" style="margin-bottom:24px;min-height:50px;"></div>
+        <div style="flex:1;border-top:1px solid var(--border);padding-top:24px;">
+          <div style="font-size:12px;font-weight:600;color:var(--amber);margin-bottom:12px;">INCLUDES:</div>
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text);">
+            <div>✓ 60 searches/month</div>
+            <div>✓ Business discovery & enrichment</div>
+            <div>✓ Phone & email</div>
+            <div>✓ Instagram & TikTok handles</div>
+            <div>✓ LinkedIn company pages</div>
+            <div>✓ PDF & Excel export</div>
+            <div style="opacity:0.7;">✗ AI deep search mode</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pro tier -->
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:28px;display:flex;flex-direction:column;position:relative;">
+        <div style="position:absolute;top:-12px;right:20px;background:var(--green);color:var(--bg);padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;">BEST VALUE</div>
+        <div style="margin-bottom:20px;">
+          <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px;">Pro</div>
+          <div style="color:var(--text-dim);font-size:13px;">For agencies & power users</div>
+        </div>
+        <div style="font-size:32px;font-weight:700;color:var(--text);margin-bottom:4px;">$19.99<span style="font-size:14px;color:var(--text-dim);font-weight:500;">/mo</span></div>
+        <div style="color:var(--text-dim);font-size:12px;margin-bottom:24px;">150 searches/month (1,800/year)</div>
+        <div id="paypal-btn-pro" style="margin-bottom:24px;min-height:50px;"></div>
+        <div style="flex:1;border-top:1px solid var(--border);padding-top:24px;">
+          <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:12px;">INCLUDES:</div>
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text);">
+            <div>✓ 150 searches/month</div>
+            <div>✓ Business discovery & enrichment</div>
+            <div>✓ Phone & email</div>
+            <div>✓ Instagram & TikTok handles</div>
+            <div>✓ LinkedIn company pages</div>
+            <div>✓ PDF & Excel export</div>
+            <div style="color:var(--green);font-weight:600;">✓ AI deep search mode</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature comparison table (mobile-friendly) -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:30px;display:none;" id="feature-table" data-show-on-large="true">
+      <h3 style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:16px;">Feature Comparison</h3>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead style="border-bottom:1px solid var(--border);">
+            <tr>
+              <th style="text-align:left;padding:12px 0;color:var(--text-dim);font-weight:600;">Feature</th>
+              <th style="text-align:center;padding:12px;color:var(--text-dim);font-weight:600;">Free</th>
+              <th style="text-align:center;padding:12px;color:var(--amber);font-weight:600;">Starter</th>
+              <th style="text-align:center;padding:12px;color:var(--green);font-weight:600;">Pro</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:12px 0;color:var(--text);">Searches/month</td>
+              <td style="text-align:center;padding:12px;color:var(--text-dim);">5</td>
+              <td style="text-align:center;padding:12px;color:var(--text);">60</td>
+              <td style="text-align:center;padding:12px;color:var(--text);">150</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:12px 0;color:var(--text);">Basic discovery</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:12px 0;color:var(--text);">Phone & email</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:12px 0;color:var(--text);">Social media handles</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+            </tr>
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:12px 0;color:var(--text);">AI deep search</td>
+              <td style="text-align:center;padding:12px;color:var(--text-dim);">—</td>
+              <td style="text-align:center;padding:12px;color:var(--text-dim);">—</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;color:var(--text);">Export (Excel/PDF)</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">✓</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FAQ / Info section -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;">
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:16px;">Questions? All plans include:</p>
+      <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:12px;font-size:12px;color:var(--text-dim);">
+        <div>• Cancel anytime</div>
+        <div>• No lock-in</div>
+        <div>• Searches roll over</div>
+        <div>• 24/7 support</div>
       </div>
     </div>
   </div>
