@@ -1,6 +1,34 @@
 const { q } = require('../db');
 const { v4: uuid } = require('uuid');
 
+// Every auto-created guest gets an unreachable @leadhunter.local address —
+// this suffix is also how we recognize "this session is a guest, not a real
+// login" elsewhere (isGuest(), the /claim upgrade route).
+const GUEST_EMAIL_SUFFIX = '@leadhunter.local';
+function isGuestEmail(email) {
+  return typeof email === 'string' && email.endsWith(GUEST_EMAIL_SUFFIX);
+}
+
+// Creates a free-tier account with no email/password and logs the current
+// session into it. Shared by optionalAuth (API routes) and POST /api/auth/guest
+// (the frontend's silent first-visit call) so there's one place this happens.
+function provisionGuest(req) {
+  const guestId = uuid();
+  const guestEmail = `guest-${guestId}${GUEST_EMAIL_SUFFIX}`;
+
+  q.insertUser.run({ id: guestId, email: guestEmail, password_hash: '' });
+  q.insertSubscription.run({
+    id: uuid(),
+    user_id: guestId,
+    tier: 'free',
+    status: 'active',
+    period_start: new Date().toISOString(),
+  });
+
+  req.session.userId = guestId;
+  return q.getUserById.get(guestId);
+}
+
 // Blocks the request unless a valid session is present. Looks the user up
 // fresh on every request (not just trusting the session blob) so a deleted
 // account is locked out immediately.
@@ -31,28 +59,12 @@ function optionalAuth(req, res, next) {
     return next();
   }
 
-  // No session — auto-create guest account
-  const guestId = uuid();
-  const guestEmail = `guest-${guestId}@leadhunter.local`;
-
   try {
-    q.insertUser.run({ id: guestId, email: guestEmail, password_hash: '' });
-    const subId = uuid();
-    q.insertSubscription.run({
-      id: subId,
-      user_id: guestId,
-      tier: 'free',
-      status: 'active',
-      period_start: new Date().toISOString(),
-    });
-
-    req.session.userId = guestId;
-    const user = q.getUserById.get(guestId);
-    req.user = user;
+    req.user = provisionGuest(req);
     next();
   } catch (e) {
     res.status(500).json({ error: 'Failed to provision guest account.' });
   }
 }
 
-module.exports = { requireAuth, optionalAuth };
+module.exports = { requireAuth, optionalAuth, provisionGuest, isGuestEmail };

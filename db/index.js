@@ -124,6 +124,9 @@ const q = {
   insertUser:     db.prepare('INSERT INTO users (id, email, password_hash) VALUES (@id, @email, @password_hash)'),
   getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
   getUserById:    db.prepare('SELECT * FROM users WHERE id = ?'),
+  // Upgrades a guest row in place (same id, same subscription/history) into a
+  // real login instead of creating a second account and orphaning their data.
+  updateUserCredentials: db.prepare('UPDATE users SET email = @email, password_hash = @password_hash WHERE id = @id'),
 
   insertSubscription: db.prepare(`
     INSERT INTO subscriptions (id, user_id, tier, status) VALUES (@id, @user_id, @tier, @status)
