@@ -61,6 +61,25 @@ async function getSubscription(subscriptionId) {
   return api('GET', `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`);
 }
 
+// PayPal returns 204 No Content on success — request() already treats an
+// empty body as {} rather than a parse error, so this resolves to {}.
+async function cancelSubscription(subscriptionId, reason) {
+  return api('POST', `/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, {
+    reason: reason || 'Customer requested cancellation',
+  });
+}
+
+// Used by the owner dashboard's billing-health check — confirms a configured
+// PAYPAL_PLAN_ID_* actually exists (and is active) under THIS Client
+// ID/Secret's account, rather than assuming Railway's env vars are correct.
+async function getPlan(planId) {
+  return api('GET', `/v1/billing/plans/${encodeURIComponent(planId)}`);
+}
+
+async function getWebhook(webhookId) {
+  return api('GET', `/v1/notifications/webhooks/${encodeURIComponent(webhookId)}`);
+}
+
 // ── Webhook signature verification ───────────────────────────────────────────
 // Delegated to PayPal's own verify endpoint rather than reimplementing their
 // signature crypto locally — simpler and avoids byte-exact re-serialization
@@ -125,4 +144,4 @@ async function createWebhook(url) {
   });
 }
 
-module.exports = { getAccessToken, api, getSubscription, verifyWebhookSignature, createProductAndPlans, createWebhook };
+module.exports = { getAccessToken, api, getSubscription, cancelSubscription, getPlan, getWebhook, verifyWebhookSignature, createProductAndPlans, createWebhook };

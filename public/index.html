@@ -865,11 +865,46 @@
   }
 
   /* Responsive tweaks */
+  #mobile-menu-btn {
+    display: none;
+    position: fixed;
+    top: 14px; left: 14px;
+    z-index: 150;
+    width: 40px; height: 40px;
+    align-items: center; justify-content: center;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text); font-size: 18px; cursor: pointer;
+  }
+  #sidebar-backdrop {
+    display: none;
+    position: fixed; inset: 0; z-index: 99;
+    background: rgba(0,0,0,0.6);
+  }
+  #sidebar-backdrop.open { display: block; }
+
   @media (max-width: 900px) {
-    :root { --sidebar-w: 200px; }
     .charts-grid { grid-template-columns: 1fr; }
     .form-row { grid-template-columns: 1fr; }
+    .form-row-3 { grid-template-columns: 1fr; }
     .detail-grid { grid-template-columns: 1fr; }
+
+    #mobile-menu-btn { display: flex; }
+
+    /* Sidebar becomes an off-canvas drawer instead of eating ~240px of a
+       ~360-430px phone screen — that forced-desktop-mode complaint was this. */
+    #sidebar {
+      width: 260px; min-width: 260px;
+      transform: translateX(-100%);
+      transition: transform 0.22s ease;
+      z-index: 200;
+    }
+    #sidebar.open { transform: translateX(0); box-shadow: 8px 0 24px rgba(0,0,0,0.4); }
+
+    #main { margin-left: 0; }
+    .page { padding: 64px 16px 60px; } /* top clearance for the fixed hamburger button */
+    .page-header { flex-wrap: wrap; gap: 10px; }
+    .page-header .export-row { width: 100%; }
   }
 
   /* Helpers */
@@ -1147,16 +1182,20 @@
   }
 
   .more-options-toggle {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 12.5px; color: var(--amber); cursor: pointer; user-select: none;
-    font-weight: 600; margin: -4px 0 4px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--amber); cursor: pointer; user-select: none;
+    font-weight: 600; margin-bottom: 4px;
+    padding: 10px 14px;
+    background: var(--surface2); border: 1px dashed var(--amber-dim); border-radius: var(--radius);
+    transition: background 0.15s ease, border-color 0.15s ease;
   }
-  .more-options-toggle .arrow { transition: transform 0.2s ease; font-size: 10px; }
+  .more-options-toggle:hover { background: var(--amber-glow); border-color: var(--amber); }
+  .more-options-toggle .arrow { transition: transform 0.2s ease; font-size: 11px; }
   .more-options-toggle.open .arrow { transform: rotate(90deg); }
   .more-options-panel {
     max-height: 0; overflow: hidden; transition: max-height 0.25s ease;
   }
-  .more-options-panel.open { max-height: 400px; }
+  .more-options-panel.open { max-height: 400px; margin-top: 4px; }
 
   /* ════════════════════════════════════════════════════════════════════
      OWNER PORTAL
@@ -1266,13 +1305,13 @@
       <div class="mini-price-card popular">
         <div class="plan-name">Starter</div>
         <div class="plan-price">$9<span>/mo</span></div>
-        <div class="plan-detail">60 searches/month</div>
+        <div class="plan-detail">60 searches/month + 5 AI deep research/month</div>
         <button class="btn btn-amber" style="width:100%;" onclick="openUpgrade();return false;">Choose Starter</button>
       </div>
       <div class="mini-price-card">
         <div class="plan-name">Pro</div>
         <div class="plan-price">$19.99<span>/mo</span></div>
-        <div class="plan-detail">150 searches/month + AI deep search</div>
+        <div class="plan-detail">150 searches/month + 20 AI deep research/month</div>
         <button class="btn btn-ghost" style="width:100%;" onclick="openUpgrade();return false;">Choose Pro</button>
       </div>
     </div>
@@ -1352,78 +1391,11 @@
       <div id="upgrade-msg" style="font-size:13px;color:var(--red);margin-top:12px;display:none;background:rgba(239,68,68,0.1);padding:10px 16px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);"></div>
     </div>
 
-    <!-- Pricing cards grid -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-bottom:40px;">
-      <!-- Free tier (info only) -->
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;display:flex;flex-direction:column;position:relative;">
-        <div style="margin-bottom:20px;">
-          <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px;">Free</div>
-          <div style="color:var(--text-dim);font-size:13px;">For testing</div>
-        </div>
-        <div style="font-size:32px;font-weight:700;color:var(--text);margin-bottom:4px;">$0<span style="font-size:14px;color:var(--text-dim);font-weight:500;">/mo</span></div>
-        <div style="color:var(--text-dim);font-size:12px;margin-bottom:24px;">5 searches lifetime</div>
-        <div style="background:rgba(240,165,0,0.08);color:var(--amber);padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;text-align:center;margin-bottom:24px;border:1px solid rgba(240,165,0,0.2);">Your current plan</div>
-        <div style="flex:1;border-top:1px solid var(--border);padding-top:24px;">
-          <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:12px;">INCLUDES:</div>
-          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text-dim);">
-            <div>✓ 5 lifetime searches</div>
-            <div>✓ Basic business discovery</div>
-            <div>✓ Phone & contact info</div>
-            <div>✓ Social media handles</div>
-            <div style="opacity:0.5;">✗ AI deep search</div>
-            <div style="opacity:0.5;">✗ Email discovery</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Starter tier -->
-      <div style="background:var(--surface);border:1px solid var(--amber);border-radius:12px;padding:28px;display:flex;flex-direction:column;position:relative;box-shadow:0 0 20px rgba(240,165,0,0.15);">
-        <div style="position:absolute;top:-12px;left:20px;background:var(--amber);color:var(--bg);padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;">POPULAR</div>
-        <div style="margin-bottom:20px;">
-          <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px;">Starter</div>
-          <div style="color:var(--text-dim);font-size:13px;">For freelancers & small teams</div>
-        </div>
-        <div style="font-size:32px;font-weight:700;color:var(--text);margin-bottom:4px;">$9<span style="font-size:14px;color:var(--text-dim);font-weight:500;">/mo</span></div>
-        <div style="color:var(--text-dim);font-size:12px;margin-bottom:24px;">60 searches/month (720/year)</div>
-        <div id="paypal-btn-starter" style="margin-bottom:24px;min-height:50px;"></div>
-        <div style="flex:1;border-top:1px solid var(--border);padding-top:24px;">
-          <div style="font-size:12px;font-weight:600;color:var(--amber);margin-bottom:12px;">INCLUDES:</div>
-          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text);">
-            <div>✓ 60 searches/month</div>
-            <div>✓ Business discovery & enrichment</div>
-            <div>✓ Phone & email</div>
-            <div>✓ Instagram & TikTok handles</div>
-            <div>✓ LinkedIn company pages</div>
-            <div>✓ PDF & Excel export</div>
-            <div style="opacity:0.7;">✗ AI deep search mode</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Pro tier -->
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:28px;display:flex;flex-direction:column;position:relative;">
-        <div style="position:absolute;top:-12px;right:20px;background:var(--green);color:var(--bg);padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;">BEST VALUE</div>
-        <div style="margin-bottom:20px;">
-          <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px;">Pro</div>
-          <div style="color:var(--text-dim);font-size:13px;">For agencies & power users</div>
-        </div>
-        <div style="font-size:32px;font-weight:700;color:var(--text);margin-bottom:4px;">$19.99<span style="font-size:14px;color:var(--text-dim);font-weight:500;">/mo</span></div>
-        <div style="color:var(--text-dim);font-size:12px;margin-bottom:24px;">150 searches/month (1,800/year)</div>
-        <div id="paypal-btn-pro" style="margin-bottom:24px;min-height:50px;"></div>
-        <div style="flex:1;border-top:1px solid var(--border);padding-top:24px;">
-          <div style="font-size:12px;font-weight:600;color:var(--green);margin-bottom:12px;">INCLUDES:</div>
-          <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:var(--text);">
-            <div>✓ 150 searches/month</div>
-            <div>✓ Business discovery & enrichment</div>
-            <div>✓ Phone & email</div>
-            <div>✓ Instagram & TikTok handles</div>
-            <div>✓ LinkedIn company pages</div>
-            <div>✓ PDF & Excel export</div>
-            <div style="color:var(--green);font-weight:600;">✓ AI deep search mode</div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Pricing cards grid — populated by renderPricingCards(), which reads the
+         caller's ACTUAL tier so the right card shows "current", upgrades show
+         a real Subscribe button, and downgrades show Cancel instead of a
+         second Subscribe button (which would otherwise double-bill them). -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px;margin-bottom:40px;" id="pricing-cards-grid"></div>
 
     <!-- Feature comparison table (mobile-friendly) -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:30px;display:none;" id="feature-table" data-show-on-large="true">
@@ -1446,7 +1418,7 @@
               <td style="text-align:center;padding:12px;color:var(--text);">150</td>
             </tr>
             <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:12px 0;color:var(--text);">Basic discovery</td>
+              <td style="padding:12px 0;color:var(--text);">Basic business directory</td>
               <td style="text-align:center;padding:12px;">✓</td>
               <td style="text-align:center;padding:12px;">✓</td>
               <td style="text-align:center;padding:12px;">✓</td>
@@ -1464,10 +1436,10 @@
               <td style="text-align:center;padding:12px;">✓</td>
             </tr>
             <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:12px 0;color:var(--text);">AI deep search</td>
+              <td style="padding:12px 0;color:var(--text);">AI deep research</td>
               <td style="text-align:center;padding:12px;color:var(--text-dim);">—</td>
-              <td style="text-align:center;padding:12px;color:var(--text-dim);">—</td>
-              <td style="text-align:center;padding:12px;">✓</td>
+              <td style="text-align:center;padding:12px;">5/month</td>
+              <td style="text-align:center;padding:12px;">20/month</td>
             </tr>
             <tr>
               <td style="padding:12px 0;color:var(--text);">Export (Excel/PDF)</td>
@@ -1486,7 +1458,7 @@
       <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:12px;font-size:12px;color:var(--text-dim);">
         <div>• Cancel anytime</div>
         <div>• No lock-in</div>
-        <div>• Searches roll over</div>
+        <div>• Monthly quota resets each billing cycle</div>
         <div>• 24/7 support</div>
       </div>
     </div>
@@ -1520,9 +1492,14 @@
 </div>
 
 <div id="app" style="display:none;">
+  <!-- Mobile-only: hamburger toggle + tap-outside-to-close backdrop for the
+       off-canvas sidebar (see the max-width:900px block in <style>). -->
+  <button id="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Menu">☰</button>
+  <div id="sidebar-backdrop" onclick="closeMobileSidebar()"></div>
+
   <!-- SIDEBAR -->
   <nav id="sidebar">
-    <div class="sidebar-logo">
+    <div class="sidebar-logo" onclick="goHome()" style="cursor:pointer;" title="Back to home">
       <div class="logo-title">⚡ LeadHunter</div>
       <div class="logo-sub">AI v2.1</div>
     </div>
@@ -1547,7 +1524,7 @@
         <span class="nav-icon">👑</span>
         <span class="nav-label">Owner</span>
       </div>
-      <div class="nav-item" onclick="openContactForm();return false;" style="cursor:pointer;">
+      <div class="nav-item" onclick="openContactForm();closeMobileSidebar();return false;" style="cursor:pointer;">
         <span class="nav-icon">❓</span>
         <span class="nav-label">Help</span>
       </div>
@@ -1635,7 +1612,7 @@
              Autocomplete/GPS can still silently fill these while collapsed. -->
         <div class="more-options-toggle" id="more-options-toggle" onclick="toggleMoreOptions()">
           <span class="arrow">▸</span>
-          <span>More location options — country, zip, neighborhood, or paste a map link/pin</span>
+          <span>📍 Add country, zip, neighborhood, or paste a map link/pin for a more precise search</span>
         </div>
         <div class="more-options-panel" id="more-options-panel">
           <div class="form-row-3" style="margin-bottom:16px;margin-top:12px;">
@@ -1720,16 +1697,16 @@
             </label>
           </div>
           <div class="form-group">
-            <label class="form-label">Search engine</label>
-            <label id="ai-mode-label" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;" title="When ON, an AI agent researches each business like a human (opens its site, Instagram, delivery & directory pages) instead of a single Serper query. Slower and uses more AI, but more thorough.">
-              <input type="checkbox" id="ai-mode" style="accent-color:var(--amber);width:16px;height:16px;cursor:pointer;">
-              <span>🤖 AI deep search <span id="ai-mode-usage" style="color:var(--text-dim)">(slower, more thorough)</span></span>
+            <label class="form-label">Search Mode</label>
+            <label id="ai-mode-label" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;" title="AI Search runs one lookup per business. AI Deep Research sends an agent to visit each business's site, Instagram, delivery & directory pages like a human — slower and uses more AI, but more thorough.">
+              <input type="checkbox" id="ai-mode" onchange="updateAiModeName()" style="accent-color:var(--amber);width:16px;height:16px;cursor:pointer;">
+              <span>🤖 <span id="ai-mode-name">AI Search</span> <span id="ai-mode-usage" style="color:var(--text-dim)"></span></span>
             </label>
           </div>
         </div>
 
         <button class="btn btn-amber start-btn" id="start-btn" onclick="startSearch()">
-          ▶ Start Search
+          ▶ Start AI Search
         </button>
       </div>
 
@@ -1881,11 +1858,25 @@
           <div class="page-title">Owner Dashboard<span class="owner-badge">Owner-only</span></div>
           <div class="page-sub">Users, revenue, and inbound messages across the whole app</div>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="loadOwnerData()">↻ Refresh</button>
+        <div class="flex gap-8">
+          <button class="btn btn-ghost btn-sm" onclick="downloadOwnerBackup()" title="Downloads a full database snapshot — useful before migrating to a new Railway project/volume">⬇ Download backup</button>
+          <button class="btn btn-ghost btn-sm" onclick="loadOwnerData()">↻ Refresh</button>
+        </div>
       </div>
 
       <div class="owner-stat-grid" id="owner-stats">
         <div class="owner-stat-card"><div class="owner-stat-value">—</div><div class="owner-stat-label">Loading…</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Infrastructure health</span></div>
+        <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.4px;">Serper accounts</div>
+        <div id="owner-serper-accounts" style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px;"></div>
+        <div style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.4px;">PayPal</div>
+        <div id="owner-paypal-status" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;"></div>
+        <button class="btn btn-ghost btn-sm" onclick="runPaypalSetup()">⚙ Generate Product + Plans + Webhook</button>
+        <div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;">Creates NEW PayPal objects every time — only run this for first-time setup or a fresh environment (e.g. switching to live mode), not to "fix" existing working Plan IDs.</div>
+        <div id="owner-paypal-setup-result" style="display:none;margin-top:14px;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);font-size:12.5px;"></div>
       </div>
 
       <div class="panel">
@@ -2007,6 +1998,14 @@ const state = {
   researchExcludeNames: new Set(), // businesses already seen at this pin, across "Research this area" rounds
 };
 
+// True once the user scrolls #main during an active search — the completion
+// auto-scroll in showExportButtons() checks this so it never yanks the view
+// away from someone who's already deliberately looking somewhere else.
+let userScrolledDuringSearch = false;
+document.getElementById('main').addEventListener('scroll', () => {
+  if (state.activeSearchId) userScrolledDuringSearch = true;
+}, { passive: true });
+
 // ============================================================
 //  LEAD NORMALIZATION
 // ============================================================
@@ -2067,11 +2066,22 @@ function navigateTo(page) {
   if (page === 'history') renderHistory();
   if (page === 'analytics') renderAnalytics();
   if (page === 'owner') loadOwnerData();
+  closeMobileSidebar(); // tapping a destination should also dismiss the drawer it was opened from
 }
 
 document.querySelectorAll('.nav-item').forEach(item => {
   item.addEventListener('click', () => navigateTo(item.dataset.page));
 });
+
+// ─── Mobile off-canvas sidebar ──────────────────────────────────────────────
+function toggleMobileSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-backdrop').classList.toggle('open');
+}
+function closeMobileSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+}
 
 // ============================================================
 //  WEBSOCKET
@@ -2144,7 +2154,7 @@ function handleWsEvent(data) {
       handleSearchError(data.searchId, data.error);
       break;
     case 'search_stopped':
-      handleSearchStopped(data.searchId);
+      handleSearchStopped(data.searchId, data.total);
       break;
   }
 }
@@ -2252,6 +2262,7 @@ async function startSearch(opts = {}) {
   };
 
   document.getElementById('start-btn').disabled = true;
+  userScrolledDuringSearch = false; // give the completion auto-scroll a fresh chance on every run
   if (!isResearch) {
     clearLog();
     document.getElementById('live-lead-count').textContent = '0';
@@ -2267,8 +2278,8 @@ async function startSearch(opts = {}) {
   showLiveLeadsPanel();
   setStatus('searching', 'Searching…');
   appendLog('info', isResearch
-    ? `Researching ${category} in ${location}${country ? ', ' + country : ''} — excluding ${payload.exclude_names.length} already found…`
-    : `Starting search: ${category} in ${location}${country ? ', ' + country : ''}…`);
+    ? `Re-searching ${category} in ${location}${country ? ', ' + country : ''} — excluding ${payload.exclude_names.length} already found…`
+    : `Starting AI search: ${category} in ${location}${country ? ', ' + country : ''}…`);
 
   try {
     const res = await apiFetch('/api/searches', { method: 'POST', body: JSON.stringify(payload) });
@@ -2334,13 +2345,13 @@ function handleSearchStarted(search) {
 }
 
 function handleSearchComplete(searchId, total, researchMode, noNewResults) {
-  appendLog('success', researchMode ? `Research complete! Found ${total} new leads.` : `Search complete! Found ${total} leads.`);
+  appendLog('success', researchMode ? `Re-search complete! Found ${total} new leads.` : `Search complete! Found ${total} leads.`);
   document.getElementById('start-btn').disabled = false;
   setStatus('connected', 'Connected');
   updateStatusBar(`Done — ${total} lead${total !== 1 ? 's' : ''} found`, false);
   state.activeSearchId = null;
   updateSearchStatus(searchId, 'done');
-  showToast('success', '✅', researchMode ? `Research complete! ${total} new leads found.` : `Search complete! ${total} leads found.`);
+  showToast('success', '✅', researchMode ? `Re-search complete! ${total} new leads found.` : `Search complete! ${total} leads found.`);
   showExportButtons(searchId, { researchMode, noNewResults });
   updateBadge();
   if (state.currentPage === 'all-leads') renderLeadsTable();
@@ -2358,14 +2369,16 @@ function handleSearchError(searchId, error) {
   showToast('error', '❌', `Search failed: ${error}`);
 }
 
-function handleSearchStopped(searchId) {
-  appendLog('warn', 'Search stopped by user.');
+function handleSearchStopped(searchId, total) {
+  const count = total || 0;
+  appendLog('warn', `Search stopped by user — ${count} lead${count !== 1 ? 's' : ''} saved before stopping.`);
   document.getElementById('start-btn').disabled = false;
   setStatus('connected', 'Connected');
-  updateStatusBar('Search stopped.', false);
+  updateStatusBar(`Stopped — ${count} lead${count !== 1 ? 's' : ''} saved`, false);
   state.activeSearchId = null;
   updateSearchStatus(searchId, 'stopped');
-  showToast('info', 'ℹ️', 'Search stopped.');
+  showToast('info', 'ℹ️', `Search stopped — ${count} lead${count !== 1 ? 's' : ''} saved.`);
+  if (count > 0) showExportButtons(searchId, { researchMode: false, noNewResults: false });
 }
 
 function handleLeadFound(lead) {
@@ -2407,18 +2420,40 @@ function updateSearchStatus(searchId, status) {
 // ============================================================
 //  LOG PANEL
 // ============================================================
+// A busy search can fire a dozen+ log lines within the same 16ms frame
+// (each processBusiness step logs separately). Appending + reading
+// scrollHeight per line forces one synchronous layout reflow PER LINE —
+// that read-after-write pattern is what made a busy search feel laggy.
+// Batching every line that lands in a frame into one write + one reflow
+// fixes that without changing what's shown.
+let pendingLogLines = [];
+let logFlushScheduled = false;
+
 function appendLog(level, msg) {
+  pendingLogLines.push({ level, msg, time: new Date().toTimeString().slice(0, 8) });
+  if (!logFlushScheduled) {
+    logFlushScheduled = true;
+    requestAnimationFrame(flushLogLines);
+  }
+}
+
+function flushLogLines() {
+  logFlushScheduled = false;
   const console_ = document.getElementById('log-console');
-  const now = new Date();
-  const time = now.toTimeString().slice(0, 8);
-  const line = document.createElement('div');
-  line.className = `log-line ${level}`;
-  line.innerHTML = `<span class="log-time">[${time}]</span><span class="log-msg">${escHtml(msg)}</span>`;
-  console_.appendChild(line);
+  const frag = document.createDocumentFragment();
+  for (const { level, msg, time } of pendingLogLines) {
+    const line = document.createElement('div');
+    line.className = `log-line ${level}`;
+    line.innerHTML = `<span class="log-time">[${time}]</span><span class="log-msg">${escHtml(msg)}</span>`;
+    frag.appendChild(line);
+  }
+  pendingLogLines = [];
+  console_.appendChild(frag);
   console_.scrollTop = console_.scrollHeight;
 }
 
 function clearLog() {
+  pendingLogLines = []; // drop anything queued from the previous search's tail end
   document.getElementById('log-console').innerHTML = '';
 }
 
@@ -2447,14 +2482,14 @@ function updateStatusBar(text, spinning = true) {
 
 function showExportButtons(searchId, opts = {}) {
   const buttonsHtml = `
-    <button class="btn btn-amber btn-sm" type="button" onclick="researchThisArea(false)" title="Search this exact area again, skipping everything already found">🔁 Research this area</button>
+    <button class="btn btn-amber btn-sm" type="button" onclick="researchThisArea(false)" title="Search this exact area again, skipping everything already found">🔁 Re-search</button>
     <a class="btn btn-ghost btn-sm" href="/api/export/${searchId}/excel" target="_blank">📥 Export Excel</a>
     <a class="btn btn-ghost btn-sm" href="/api/export/${searchId}/pdf" target="_blank">📄 Export PDF</a>
   `;
   const noNewHtml = opts.noNewResults ? `
     <div style="width:100%;margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius);background:rgba(255,255,255,0.03);font-size:13px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
       <span>No new businesses within this radius — everything nearby is already in your list.</span>
-      <button class="btn btn-amber btn-sm" type="button" onclick="researchThisArea(true)">📏 Increase radius &amp; research again</button>
+      <button class="btn btn-amber btn-sm" type="button" onclick="researchThisArea(true)">📏 Increase radius &amp; re-search</button>
     </div>` : '';
 
   // Top of page (page-header) — visible if the user is at the top.
@@ -2470,10 +2505,15 @@ function showExportButtons(searchId, opts = {}) {
   const bottom = document.getElementById('post-search-actions');
   if (bottom) {
     bottom.style.display = 'flex';
-    bottom.innerHTML = `<span style="font-size:12.5px;color:var(--text-dim);margin-right:auto;">✅ Search done — ${opts.researchMode ? 'research round complete' : 'ready for follow-ups'}:</span>` + buttonsHtml + noNewHtml;
-    // Nudge the completion bar into view (a long search leaves the user well
-    // below it). smooth-scroll rather than jump so they don't lose orientation.
-    try { bottom.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch {}
+    bottom.innerHTML = `<span style="font-size:12.5px;color:var(--text-dim);margin-right:auto;">✅ Search done — ${opts.researchMode ? 're-search complete' : 'ready for follow-ups'}:</span>` + buttonsHtml + noNewHtml;
+    // Nudge the completion bar into view — but only if the user hasn't
+    // already scrolled somewhere on their own during this search; forcing
+    // their view around after they've deliberately moved is what made this
+    // feel like it was fighting them. block:'end' (not 'center') so it
+    // actually lands at the true bottom instead of stopping short of it.
+    if (!userScrolledDuringSearch) {
+      try { bottom.scrollIntoView({ behavior: 'smooth', block: 'end' }); } catch {}
+    }
   }
 }
 
@@ -3285,15 +3325,21 @@ async function renderAnalytics() {
 //  the endpoints themselves are also server-side gated (requireOwner), so
 //  this is a convenience view, not the security boundary.
 // ============================================================
+function downloadOwnerBackup() {
+  // A plain navigation (not fetch) so the browser handles the file download
+  // itself — the session cookie rides along automatically since it's same-origin.
+  window.open('/api/owner/backup', '_blank');
+}
+
+// Each section fetches and renders independently rather than behind one
+// Promise.all — billing-health makes real outbound calls to PayPal (2 plan
+// lookups + a webhook lookup), and a slow or flaky one out there shouldn't
+// leave stats/users/messages stuck on "Loading…" for data that was ready
+// instantly from the local DB.
 async function loadOwnerData() {
   const statsEl = document.getElementById('owner-stats');
-  try {
-    const [stats, users, messages] = await Promise.all([
-      apiFetch('/api/owner/stats').then(r => r.json()),
-      apiFetch('/api/owner/users').then(r => r.json()),
-      apiFetch('/api/owner/messages').then(r => r.json()),
-    ]);
 
+  apiFetch('/api/owner/stats').then(r => r.json()).then(stats => {
     const cards = [
       { label: 'Real users', value: stats.totalUsers },
       { label: 'Guest sessions', value: stats.totalGuests },
@@ -3310,7 +3356,9 @@ async function loadOwnerData() {
         <div class="owner-stat-label">${c.label}</div>
       </div>
     `).join('');
+  }).catch(e => { statsEl.innerHTML = `<div class="text-dim" style="font-size:13px;">Could not load stats: ${escHtml(e.message)}</div>`; });
 
+  apiFetch('/api/owner/users').then(r => r.json()).then(users => {
     const tbody = document.getElementById('owner-users-tbody');
     const usersEmpty = document.getElementById('owner-users-empty');
     const realUsers = users.filter(u => !u.isGuest);
@@ -3325,7 +3373,9 @@ async function loadOwnerData() {
         <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
       </tr>
     `).join('');
+  }).catch(() => {});
 
+  apiFetch('/api/owner/messages').then(r => r.json()).then(messages => {
     const msgList = document.getElementById('owner-messages-list');
     const msgEmpty = document.getElementById('owner-messages-empty');
     msgEmpty.style.display = messages.length ? 'none' : 'block';
@@ -3338,8 +3388,84 @@ async function loadOwnerData() {
         <div style="font-size:13px;color:var(--text);white-space:pre-wrap;">${escHtml(m.message || '')}</div>
       </div>
     `).join('');
+  }).catch(() => {});
+
+  apiFetch('/api/owner/billing-health').then(r => r.json()).then(renderOwnerHealth).catch(e => {
+    document.getElementById('owner-serper-accounts').innerHTML = `<div class="text-dim" style="font-size:13px;">Could not load health data: ${escHtml(e.message)}</div>`;
+  });
+}
+
+function healthRow(ok, label, detail) {
+  const color = ok ? 'var(--green)' : 'var(--red)';
+  const icon = ok ? '✓' : '✗';
+  return `<div style="display:flex;align-items:center;gap:8px;font-size:13px;padding:8px 12px;background:var(--surface2);border-radius:var(--radius);">
+    <span style="color:${color};font-weight:700;">${icon}</span>
+    <span style="color:var(--text);font-weight:600;">${escHtml(label)}</span>
+    <span style="color:var(--text-dim);margin-left:auto;text-align:right;">${escHtml(detail || '')}</span>
+  </div>`;
+}
+
+let lastOwnerHealth = null;
+
+function renderOwnerHealth(health) {
+  lastOwnerHealth = health;
+  const serperEl = document.getElementById('owner-serper-accounts');
+  const s = health.serper;
+  if (!s.total) {
+    serperEl.innerHTML = healthRow(false, 'No Serper keys configured', 'Falling back to OpenStreetMap');
+  } else {
+    serperEl.innerHTML = s.accounts.map(a => healthRow(
+      a.status === 'healthy',
+      a.name + (a.name === s.active ? ' (active now)' : ''),
+      a.status === 'healthy' ? a.masked : `dead — ${a.reason || 'unknown reason'}`
+    )).join('');
+  }
+
+  const paypalEl = document.getElementById('owner-paypal-status');
+  const p = health.paypal;
+  if (!p.configured) {
+    paypalEl.innerHTML = healthRow(false, 'PayPal not configured', 'PAYPAL_CLIENT_ID / SECRET missing');
+  } else {
+    paypalEl.innerHTML = [
+      healthRow(true, 'Mode', p.mode === 'live' ? '🔴 LIVE — real money' : 'Sandbox (test mode)'),
+      healthRow(!!(p.starter && p.starter.ok), 'Starter plan', p.starter && p.starter.ok ? p.starter.status : (p.starter && p.starter.error) || 'not checked'),
+      healthRow(!!(p.pro && p.pro.ok), 'Pro plan', p.pro && p.pro.ok ? p.pro.status : (p.pro && p.pro.error) || 'not checked'),
+      healthRow(!!(p.webhook && p.webhook.ok), 'Webhook', p.webhook && p.webhook.ok ? p.webhook.url : (p.webhook && p.webhook.error) || 'not checked'),
+    ].join('');
+  }
+}
+
+// Creates a NEW PayPal Product + Starter/Pro Plans + webhook subscription
+// via the currently-configured credentials — see routes/owner.js for why
+// this must never be re-run casually (it duplicates, never reuses).
+async function runPaypalSetup() {
+  const mode = (lastOwnerHealth && lastOwnerHealth.paypal && lastOwnerHealth.paypal.mode) || 'sandbox';
+  const warning = mode === 'live'
+    ? 'This is LIVE mode — it will create REAL PayPal billing plans. Continue only for first-time live setup.'
+    : 'This creates new sandbox Product/Plans/Webhook. Continue only for first-time setup or a fresh environment.';
+  if (!confirm(warning)) return;
+
+  const resultEl = document.getElementById('owner-paypal-setup-result');
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = 'Creating…';
+
+  try {
+    const res = await fetch('/api/owner/paypal-setup', { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok) { resultEl.innerHTML = `<span style="color:var(--red);">${escHtml(body.error || 'Setup failed.')}</span>`; return; }
+
+    resultEl.innerHTML = `
+      <div style="color:var(--green);font-weight:600;margin-bottom:10px;">✓ Created (${escHtml(body.mode)} mode) — paste these into Railway → Variables, then redeploy:</div>
+      <div style="font-family:monospace;background:var(--bg);padding:10px 12px;border-radius:6px;display:flex;flex-direction:column;gap:4px;">
+        <div>PAYPAL_PLAN_ID_STARTER=${escHtml(body.planIdStarter)}</div>
+        <div>PAYPAL_PLAN_ID_PRO=${escHtml(body.planIdPro)}</div>
+        ${body.webhookId ? `<div>PAYPAL_WEBHOOK_ID=${escHtml(body.webhookId)}</div>` : ''}
+      </div>
+      ${body.webhookSkippedReason ? `<div style="color:var(--amber);margin-top:8px;">⚠️ ${escHtml(body.webhookSkippedReason)}</div>` : ''}
+    `;
+    showToast('success', '✅', 'PayPal setup complete — update Railway variables and redeploy.');
   } catch (e) {
-    statsEl.innerHTML = `<div class="text-dim" style="font-size:13px;">Could not load owner data: ${escHtml(e.message)}</div>`;
+    resultEl.innerHTML = `<span style="color:var(--red);">Network error: ${escHtml(e.message)}</span>`;
   }
 }
 
@@ -4133,10 +4259,47 @@ async function landingTryFree() {
     if (!data.user) { showToast('error', '❌', 'Could not start a session — try again.'); return; }
     enterApp(data.user, data.subscription);
     init();
+    pushHistoryScreen('app'); // so the browser Back button returns to landing instead of leaving the site
   } catch (e) {
     showToast('error', '❌', 'Network error — try again.');
   }
 }
+
+// ============================================================
+//  BACK / HOME NAVIGATION
+// ============================================================
+// The app never had client-side routing, so browser Back had nothing to
+// land on and just left the site entirely. This adds the one transition
+// that actually matters (landing <-> app) to the history stack, plus an
+// explicit "go home" affordance (the sidebar logo) that doesn't depend on
+// the browser's back button at all.
+let historyNavInProgress = false; // true while handling a popstate, so the
+                                   // screen functions it calls don't push a SECOND entry
+
+function pushHistoryScreen(screen) {
+  if (historyNavInProgress) return;
+  if (history.state && history.state.screen === screen) return;
+  history.pushState({ screen }, '', location.pathname + location.search);
+}
+
+// Session/cookie is left untouched — guests keep their 5-search allowance,
+// real logins stay logged in. This only changes which screen is SHOWN.
+function goHome() {
+  showLanding();
+  closeMobileSidebar();
+  pushHistoryScreen('landing');
+}
+
+window.addEventListener('popstate', (e) => {
+  historyNavInProgress = true;
+  const screen = (e.state && e.state.screen) || 'landing';
+  if (screen === 'landing') {
+    showLanding();
+  } else {
+    checkAuth().then(user => { if (user) init(); });
+  }
+  historyNavInProgress = false;
+});
 
 function applyOwnerUI(isOwner) {
   const navOwner = document.getElementById('nav-owner');
@@ -4185,9 +4348,10 @@ function renderLandingDemo() {
 
 const LANDING_FAQS = [
   { q: 'Do I need to sign up to try it?', a: 'No — click "Try free" and you get 5 searches instantly as a guest, no email or card required. Add an email later only if you want to save your leads permanently.' },
-  { q: 'What counts as one search?', a: 'One category + location + radius combination. You can re-run "Research this area" on the same search a limited number of times (more on higher plans) to dig deeper without spending a new search.' },
-  { q: 'What is AI deep search?', a: 'Instead of a single lookup, an AI agent visits each business\'s website and socials like a human would, filling in emails and context a normal search misses. Available on Starter and Pro.' },
-  { q: 'Can I cancel anytime?', a: 'Yes. Subscriptions are billed monthly via PayPal and can be cancelled anytime — no lock-in contracts.' },
+  { q: 'What counts as one search?', a: 'One category + location + radius combination. You can tap "Re-search" on the same search a limited number of times (more on higher plans) to dig deeper without spending a new search.' },
+  { q: 'What is AI Deep Research?', a: 'Instead of a single lookup, an AI agent visits each business\'s website and socials like a human would, filling in emails and context AI Search alone misses. Available on Starter and Pro.' },
+  { q: 'Can I cancel anytime?', a: 'Yes. Subscriptions are billed monthly via PayPal and can be cancelled anytime from the pricing page — no lock-in contracts.' },
+  { q: 'What if I want a refund?', a: 'Contact us within 7 days of a charge for a full refund, no questions asked.' },
   { q: 'What happens to my guest data if I sign up later?', a: '"Save my leads" upgrades your current guest session into a real login in place — same searches, same history, same account. Nothing is lost.' },
 ];
 
@@ -4276,13 +4440,26 @@ function toggleMoreOptions() {
   document.getElementById('more-options-panel').classList.toggle('open');
 }
 
+// Keeps the visible mode name in sync with the checkbox: unchecked = the
+// default single-lookup "AI Search", checked = the agent-driven "AI Deep
+// Research". When the control is disabled (Free tier), it always names the
+// LOCKED feature ("AI Deep Research") regardless of checked state — showing
+// "AI Search (Starter+ only)" here would wrongly imply the free default mode
+// itself needs a paid plan, when only the deep-research toggle does.
+function updateAiModeName() {
+  const nameEl = document.getElementById('ai-mode-name');
+  const checkbox = document.getElementById('ai-mode');
+  if (!nameEl || !checkbox) return;
+  nameEl.textContent = (checkbox.disabled || checkbox.checked) ? 'AI Deep Research' : 'AI Search';
+}
+
 function applyTierGating(tier, subscription) {
   gateSelectOptions(document.getElementById('radius-select'), tier);
   gateSelectOptions(document.getElementById('count-select'), tier);
   renderChipsFromSelect('radius-select', 'radius-chips');
   renderChipsFromSelect('count-select', 'count-chips');
 
-  // AI deep search: greyed out entirely on Free, shows remaining uses on Starter/Pro
+  // AI Deep Research: greyed out entirely on Free, shows remaining uses on Starter/Pro
   const AI_CAPS = { free: 0, starter: 5, pro: 20 };
   const cap = AI_CAPS[tier] ?? 0;
   const aiCheckbox = document.getElementById('ai-mode');
@@ -4302,11 +4479,12 @@ function applyTierGating(tier, subscription) {
       aiLabel.style.cursor = 'pointer';
       aiUsageLabel.textContent = `(${Math.max(0, cap - used)}/${cap} left this month)`;
     }
+    updateAiModeName();
   }
 }
 
 // ============================================================
-//  UPGRADE PANEL — placeholder until the real pricing UI ships
+//  UPGRADE PANEL
 // ============================================================
 let paypalSdkPromise = null;
 function loadPaypalSdk(clientId) {
@@ -4326,10 +4504,98 @@ function closeUpgrade() {
   document.getElementById('upgrade-panel').style.display = 'none';
 }
 
+const PRICING_TIER_RANK = { free: 0, starter: 1, pro: 2 };
+const PRICING_CARDS = [
+  {
+    key: 'free', label: 'Free', tagline: 'For testing', price: '$0', suffix: '/mo',
+    detail: '5 searches, lifetime — a one-time allowance, not monthly',
+    features: [
+      ['✓', '5 lifetime searches', true],
+      ['✓', 'Basic business directory', true],
+      ['✓', 'Phone & contact info', true],
+      ['✓', 'Social media handles', true],
+      ['✗', 'AI deep research', false],
+      ['✗', 'Email discovery', false],
+    ],
+  },
+  {
+    key: 'starter', label: 'Starter', tagline: 'For freelancers & small teams', price: '$9', suffix: '/mo',
+    detail: '60 searches/month · resets each billing cycle',
+    badge: 'POPULAR', badgeBg: 'var(--amber)', accent: 'var(--amber)', border: 'var(--amber)', glow: '0 0 20px rgba(240,165,0,0.15)',
+    features: [
+      ['✓', '60 searches/month', true],
+      ['✓', 'Business discovery & enrichment', true],
+      ['✓', 'Phone & email', true],
+      ['✓', 'Instagram & TikTok handles', true],
+      ['✓', 'LinkedIn company pages', true],
+      ['✓', 'PDF & Excel export', true],
+      ['✓', 'AI deep research — 5/month', true],
+    ],
+  },
+  {
+    key: 'pro', label: 'Pro', tagline: 'For agencies & power users', price: '$19.99', suffix: '/mo',
+    detail: '150 searches/month · resets each billing cycle',
+    badge: 'BEST VALUE', badgeBg: 'var(--green)', accent: 'var(--green)', border: 'var(--border)', glow: '',
+    features: [
+      ['✓', '150 searches/month', true],
+      ['✓', 'Business discovery & enrichment', true],
+      ['✓', 'Phone & email', true],
+      ['✓', 'Instagram & TikTok handles', true],
+      ['✓', 'LinkedIn company pages', true],
+      ['✓', 'PDF & Excel export', true],
+      ['✓', 'AI deep research — 20/month', true],
+    ],
+  },
+];
+
+// The action slot under the price is the one thing that actually depends on
+// the caller's CURRENT tier: same tier -> a static badge, a tier they've
+// already passed -> Cancel (never a second Subscribe button, which would
+// just create a duplicate PayPal subscription and double-bill them), and a
+// tier above their own -> a real Subscribe button (filled in by
+// renderPaypalButton once the SDK has loaded).
+function pricingActionHtml(card, currentTier) {
+  const myRank = PRICING_TIER_RANK[currentTier] ?? 0;
+  const cardRank = PRICING_TIER_RANK[card.key];
+  if (cardRank === myRank) {
+    return `<div style="background:rgba(240,165,0,0.08);color:var(--amber);padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;text-align:center;margin-bottom:24px;border:1px solid rgba(240,165,0,0.2);">Your current plan</div>`;
+  }
+  if (cardRank < myRank) {
+    return `<button class="btn btn-ghost" type="button" style="width:100%;margin-bottom:24px;" onclick="cancelSubscription()">Cancel plan to switch</button>`;
+  }
+  return `<div id="paypal-btn-${card.key}" style="margin-bottom:24px;min-height:50px;"></div>`;
+}
+
+function renderPricingCards(currentTier) {
+  const grid = document.getElementById('pricing-cards-grid');
+  grid.innerHTML = PRICING_CARDS.map(card => `
+    <div style="background:${card.key === 'pro' ? 'var(--surface2)' : 'var(--surface)'};border:1px solid ${card.border || 'var(--border)'};border-radius:12px;padding:28px;display:flex;flex-direction:column;position:relative;${card.glow ? 'box-shadow:' + card.glow + ';' : ''}">
+      ${card.badge ? `<div style="position:absolute;top:-12px;${card.key === 'pro' ? 'right' : 'left'}:20px;background:${card.badgeBg};color:var(--bg);padding:4px 12px;border-radius:4px;font-size:11px;font-weight:700;">${card.badge}</div>` : ''}
+      <div style="margin-bottom:20px;">
+        <div style="font-weight:700;font-size:16px;color:var(--text);margin-bottom:4px;">${card.label}</div>
+        <div style="color:var(--text-dim);font-size:13px;">${card.tagline}</div>
+      </div>
+      <div style="font-size:32px;font-weight:700;color:var(--text);margin-bottom:4px;">${card.price}<span style="font-size:14px;color:var(--text-dim);font-weight:500;">${card.suffix}</span></div>
+      <div style="color:var(--text-dim);font-size:12px;margin-bottom:24px;">${card.detail}</div>
+      ${pricingActionHtml(card, currentTier)}
+      <div style="flex:1;border-top:1px solid var(--border);padding-top:24px;">
+        <div style="font-size:12px;font-weight:600;color:${card.accent || 'var(--text-dim)'};margin-bottom:12px;">INCLUDES:</div>
+        <div style="display:flex;flex-direction:column;gap:10px;font-size:13px;color:${card.key === 'free' ? 'var(--text-dim)' : 'var(--text)'};">
+          ${card.features.map(([mark, text, ok]) => `<div${ok ? '' : ' style="opacity:0.5;"'}>${mark} ${escHtml(text)}</div>`).join('')}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
 async function openUpgrade() {
   document.getElementById('upgrade-panel').style.display = 'block';
   const msgEl = document.getElementById('upgrade-msg');
   msgEl.style.display = 'none';
+  msgEl.style.color = '';
+
+  const currentTier = (state.currentUser && state.currentUser.tier) || 'free';
+  renderPricingCards(currentTier);
 
   const cfg = await fetch('/api/config').then(r => r.json());
   if (!cfg.paypalClientId || !cfg.paypalPlans || !cfg.paypalPlans.starter) {
@@ -4346,12 +4612,16 @@ async function openUpgrade() {
     return;
   }
 
-  renderPaypalButton('paypal-btn-starter', cfg.paypalPlans.starter);
-  renderPaypalButton('paypal-btn-pro', cfg.paypalPlans.pro);
+  // Only tiers renderPricingCards() actually gave a button container to
+  // (i.e. strictly above the caller's current tier) get a live PayPal button.
+  const myRank = PRICING_TIER_RANK[currentTier] ?? 0;
+  if (PRICING_TIER_RANK.starter > myRank) renderPaypalButton('paypal-btn-starter', cfg.paypalPlans.starter);
+  if (PRICING_TIER_RANK.pro > myRank) renderPaypalButton('paypal-btn-pro', cfg.paypalPlans.pro);
 }
 
 function renderPaypalButton(containerId, planId) {
   const el = document.getElementById(containerId);
+  if (!el) return; // this tier isn't an upgrade from the caller's current one
   el.innerHTML = ''; // avoid stacking duplicate buttons if the panel is reopened
   paypal.Buttons({
     createSubscription: (data, actions) => actions.subscription.create({ plan_id: planId }),
@@ -4368,18 +4638,45 @@ function renderPaypalButton(containerId, planId) {
         const body = await res.json();
         if (!res.ok) { msgEl.textContent = body.error || 'Could not confirm the subscription.'; return; }
         msgEl.textContent = `You're on the ${body.tier} plan now.`;
-        await checkAuth(); // refresh the sidebar tier label
+        await checkAuth(); // refresh the sidebar tier label + state.currentUser.tier
         setTimeout(closeUpgrade, 1500);
       } catch (e) {
         msgEl.textContent = 'Network error confirming the subscription.';
       }
     },
-    onError: () => {
+    onError: (err) => {
       const msgEl = document.getElementById('upgrade-msg');
-      msgEl.textContent = 'PayPal encountered an error — try again.';
+      // Surface whatever PayPal actually reported instead of a generic
+      // line — this almost always means the Client ID and Plan ID belong to
+      // different PayPal apps (e.g. one sandbox, one live) or the plan was
+      // deactivated; the generic message alone can't be debugged from here.
+      const detail = (err && (err.message || String(err))) || '';
+      msgEl.textContent = 'PayPal encountered an error' + (detail ? ': ' + detail : ' — try again.');
       msgEl.style.display = 'block';
+      console.error('PayPal Buttons error:', err);
     },
   }).render('#' + containerId);
+}
+
+// Cancels the CURRENT paid subscription so a lower tier's card stops showing
+// "you'd double-subscribe" and starts showing a real Subscribe button again.
+async function cancelSubscription() {
+  if (!confirm('Cancel your current paid plan? You will drop to the Free plan immediately.')) return;
+  const msgEl = document.getElementById('upgrade-msg');
+  msgEl.style.color = '';
+  msgEl.textContent = 'Cancelling…';
+  msgEl.style.display = 'block';
+  try {
+    const res = await fetch('/api/billing/cancel', { method: 'POST' });
+    const body = await res.json();
+    if (!res.ok) { msgEl.textContent = body.error || 'Could not cancel.'; return; }
+    msgEl.textContent = "Subscription cancelled — you're back on the Free plan.";
+    await checkAuth();
+    renderPricingCards('free');
+    showToast('info', 'ℹ️', 'Subscription cancelled — back on Free.');
+  } catch (e) {
+    msgEl.textContent = 'Network error — try again.';
+  }
 }
 
 // ─── Contact Form ────────────────────────────────────────────────────────────
@@ -4465,6 +4762,10 @@ async function init() {
 
 (async () => {
   const user = await checkAuth();
+  // Label this first entry without creating a new one, so the very first
+  // Back press behaves like normal browsing (nothing pushed yet = leave the
+  // site) — pushHistoryScreen() only fires on later, real in-app transitions.
+  history.replaceState({ screen: user ? 'app' : 'landing' }, '', location.pathname + location.search);
   if (user) init();
 })();
 </script>

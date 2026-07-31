@@ -32,6 +32,19 @@ function stopSearch(searchId) {
   if (s) s.stopped = true;
 }
 
+// Resolves the moment shouldStop() flips true. Raced against discover() so
+// clicking Stop is honored even while the (uninterruptible) Places/Serper/OSM
+// network calls are still in flight — the abandoned call's result is just
+// discarded when it eventually resolves, checked via shouldStop() again below.
+function waitForStop(shouldStop, intervalMs = 200) {
+  return new Promise(resolve => {
+    const timer = setInterval(() => {
+      if (shouldStop()) { clearInterval(timer); resolve(true); }
+    }, intervalMs);
+    if (timer.unref) timer.unref();
+  });
+}
+
 async function runSearch(searchConfig, broadcast) {
   const { id: searchId, category, location, country, radius_km, limit_count, lat, lng, no_website_only, neighborhood, zip, city, aiMode, excludeNames } = searchConfig;
   const cityLabel = city || location; // display/enrichment city
@@ -43,11 +56,23 @@ async function runSearch(searchConfig, broadcast) {
   const shouldStop = () => state.stopped;
   const log = (msg, level = 'info') => broadcast({ type: 'agent_log', searchId, level, message: msg });
 
+  const markStopped = (leadsFound) => {
+    q.updateSearchStatus.run({ id: searchId, status: 'stopped', leads_found: leadsFound });
+    log('■ Search stopped by user.', 'warn');
+    broadcast({ type: 'search_stopped', searchId, total: leadsFound });
+  };
+
   log(`🚀 ${isResearch ? 'Researching' : 'Starting search'}: "${category}" in ${location}${country ? ', ' + country : ''}${isResearch ? ` (excluding ${excludeNames.length} already found)` : ''}`, 'success');
   let leadsFound = 0;
 
   try {
-    const businesses = await discover({ category, city: cityLabel, neighborhood, zip, country, lat, lng, radius_km, limit_count, log, excludeNames });
+    const businesses = await Promise.race([
+      discover({ category, city: cityLabel, neighborhood, zip, country, lat, lng, radius_km, limit_count, log, excludeNames, shouldStop }),
+      waitForStop(shouldStop).then(() => null), // null = "gave up waiting", not "found zero"
+    ]);
+
+    if (businesses === null || shouldStop()) { markStopped(0); return; }
+
     if (!businesses.length) {
       if (isResearch) {
         log(`❌  No NEW businesses found within this radius — everything nearby was already in your list. Try increasing the radius.`, 'error');
@@ -62,7 +87,7 @@ async function runSearch(searchConfig, broadcast) {
     log(`📋 Found ${businesses.length} businesses. Starting enrichment...`, 'success');
 
     for (const biz of businesses) {
-      if (shouldStop()) { log('■ Search stopped by user.', 'warn'); break; }
+      if (shouldStop()) { markStopped(leadsFound); return; }
 
       log(`\n🔎 Analyzing: ${biz.name}`, 'info');
       broadcast({ type: 'agent_step', searchId, step: 'analyzing', businessName: biz.name });
@@ -81,10 +106,11 @@ async function runSearch(searchConfig, broadcast) {
 
       // Honor the requested count — stop once we've saved that many leads.
       if (leadsFound >= targetCount) { log(`🎯 Reached target of ${targetCount} leads.`, 'success'); break; }
-      if (!shouldStop()) await delay(DELAY);
+      if (shouldStop()) { markStopped(leadsFound); return; }
+      await delay(DELAY);
     }
 
-    q.updateSearchStatus.run({ id: searchId, status: state.stopped ? 'stopped' : 'done', leads_found: leadsFound });
+    q.updateSearchStatus.run({ id: searchId, status: 'done', leads_found: leadsFound });
     log(`\n✅ Search complete — ${leadsFound} leads saved`, 'success');
     broadcast({ type: 'search_complete', searchId, total: leadsFound, researchMode: isResearch });
   } catch (err) {
@@ -98,7 +124,7 @@ async function runSearch(searchConfig, broadcast) {
 
 // ── Discovery with fallbacks ─────────────────────────────────────────────────
 
-async function discover({ category, city, neighborhood, zip, country, lat, lng, radius_km, limit_count, log, excludeNames }) {
+async function discover({ category, city, neighborhood, zip, country, lat, lng, radius_km, limit_count, log, excludeNames, shouldStop = () => false }) {
   const tag = b => b.map(x => ({ ...x, instagramHint: x.instagramHint || null, searchedCategory: x.searchedCategory || category }));
 
   // "Research this area" support: drop anything already found in an earlier
@@ -126,12 +152,16 @@ async function discover({ category, city, neighborhood, zip, country, lat, lng, 
     } catch (e) { log(`⚠️  Google Places failed (${e.message}) — falling back.`, 'warn'); }
   }
 
+  if (shouldStop()) return [];
+
   // 2. Serper /places — neighborhood in `q`, ll pin + locality filter (free path,
   //    but Google Maps phone/website are not available here).
   try {
     const b = dropExcluded(await findBusinessesSerper({ category, city, neighborhood, zip, country, lat, lng, radiusKm: radius_km || 10, limit: limit_count || 20, log }));
     if (b.length) return tag(b);
   } catch (e) { log(`⚠️  Serper Places failed: ${e.message}`, 'warn'); }
+
+  if (shouldStop()) return [];
 
   // 3. OpenStreetMap (last resort). Unlike the other two paths, OSM does no
   //    chain filtering of its own — apply the same isChain gate here so a

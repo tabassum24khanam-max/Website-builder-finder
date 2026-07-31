@@ -38,6 +38,29 @@ router.post('/confirm', requireAuth, async (req, res) => {
   }
 });
 
+// Self-service cancel from the pricing modal. Downgrades to Free immediately
+// so the UI feels instant instead of waiting on the webhook — the webhook's
+// own BILLING.SUBSCRIPTION.CANCELLED handler still fires and just re-applies
+// the same state, which is harmless (updateSubscriptionTier is idempotent).
+router.post('/cancel', requireAuth, async (req, res) => {
+  const sub = q.getSubscriptionByUserId.get(req.user.id);
+  if (!sub || !sub.paypal_subscription_id || sub.tier === 'free') {
+    return res.status(400).json({ error: 'No active paid subscription to cancel.' });
+  }
+
+  try {
+    await paypal.cancelSubscription(sub.paypal_subscription_id, 'Customer requested cancellation');
+  } catch (e) {
+    return res.status(502).json({ error: 'Could not cancel with PayPal: ' + e.message });
+  }
+
+  q.updateSubscriptionTier.run({
+    user_id: req.user.id, tier: 'free', status: 'cancelled',
+    paypal_subscription_id: sub.paypal_subscription_id, period_start: null, period_end: null,
+  });
+  res.json({ success: true });
+});
+
 // PayPal calls this directly (no session/cookie) — this is the real source
 // of truth for renewals, cancellations, and payment failures.
 router.post('/webhook', async (req, res) => {

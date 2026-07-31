@@ -9,6 +9,9 @@ const { v4: uuid } = require('uuid');
 const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 
+const cookie = require('cookie');
+const cookieSignature = require('cookie-signature');
+
 const { q } = require('./db');
 const { getTier } = require('./db/tiers');
 const SqliteSessionStore = require('./db/session-store');
@@ -24,17 +27,21 @@ const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
 const PORT = process.env.PORT || 3000;
+const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-only-insecure-secret-change-me';
+const SESSION_COOKIE_NAME = 'lh_sid';
 
 // Railway terminates TLS at its edge proxy, so without this Express sees the
 // hop as plain HTTP, `req.secure` stays false, and session cookies marked
 // `secure` are silently never set — i.e. nobody can stay logged in.
 app.set('trust proxy', 1);
 
+const sessionStore = new SqliteSessionStore();
+
 app.use(express.json());
 app.use(session({
-  store: new SqliteSessionStore(),
-  name: 'lh_sid',
-  secret: process.env.SESSION_SECRET || 'dev-only-insecure-secret-change-me',
+  store: sessionStore,
+  name: SESSION_COOKIE_NAME,
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -50,21 +57,44 @@ app.use('/api/owner', ownerRouter);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── WebSocket broadcast helpers ────────────────────────────────────────────
+// Every ws connection is tagged with the userId of whoever's session cookie
+// it arrived with (decoded by hand — same signing scheme express-session
+// itself uses — since the WS upgrade never goes through Express middleware).
+// broadcast() REQUIRES a userId and only delivers to that user's own sockets:
+// without this, every visitor's search log and leads were being sent to
+// every other connected browser, guest or not.
 
 const clients = new Set();
 
-wss.on('connection', (ws) => {
+function userIdFromCookieHeader(cookieHeader, cb) {
+  if (!cookieHeader) return cb(null);
+  let raw;
+  try { raw = cookie.parse(cookieHeader)[SESSION_COOKIE_NAME]; } catch (_) { return cb(null); }
+  if (!raw || raw.substr(0, 2) !== 's:') return cb(null);
+  const sid = cookieSignature.unsign(raw.slice(2), SESSION_SECRET);
+  if (!sid) return cb(null);
+  sessionStore.get(sid, (err, sessionData) => {
+    if (err || !sessionData) return cb(null);
+    cb(sessionData.userId || null);
+  });
+}
+
+wss.on('connection', (ws, request) => {
   clients.add(ws);
+  ws.userId = null;
+  userIdFromCookieHeader(request.headers.cookie, (userId) => { ws.userId = userId; });
   ws.on('close', () => clients.delete(ws));
   ws.on('error', () => clients.delete(ws));
   // Send current search status on connect
   ws.send(JSON.stringify({ type: 'connected' }));
 });
 
-function broadcast(data) {
+function broadcast(data, userId) {
+  if (!userId) return; // fail closed — never fall back to a global send
   const msg = JSON.stringify(data);
   for (const ws of clients) {
-    try { if (ws.readyState === 1) ws.send(msg); } catch (_) {}
+    if (ws.readyState !== 1 || ws.userId !== userId) continue;
+    try { ws.send(msg); } catch (_) {}
   }
 }
 
@@ -224,7 +254,7 @@ app.post('/api/searches', optionalAuth, (req, res) => {
         aiModeAllowed = true;
         q.incrementAIUsage.run(req.user.id);
       } else if (aiCap === 0) {
-        return res.status(402).json({ error: 'AI deep search is not available on your plan. Upgrade to access it.' });
+        return res.status(402).json({ error: 'AI Deep Research is not available on your plan. Upgrade to access it.' });
       }
     }
   }
@@ -278,10 +308,13 @@ app.post('/api/searches', optionalAuth, (req, res) => {
 
   res.json({ success: true, search });
 
-  // Start agent in background
-  broadcast({ type: 'search_started', search });
-  runSearch(search, broadcast).catch(err => {
-    broadcast({ type: 'search_error', searchId, error: err.message });
+  // Start agent in background. Bind broadcast to this request's user so
+  // agent/index.js — which just calls broadcast(event) — never has to know
+  // about users at all; every event it fires stays scoped to this caller.
+  const userBroadcast = (data) => broadcast(data, req.user.id);
+  userBroadcast({ type: 'search_started', search });
+  runSearch(search, userBroadcast).catch(err => {
+    userBroadcast({ type: 'search_error', searchId, error: err.message });
   });
 });
 
@@ -323,7 +356,7 @@ app.put('/api/leads/:id', requireAuth, (req, res) => {
     notes: notes ?? lead.notes,
     outreach_message: outreach_message ?? lead.outreach_message,
   });
-  broadcast({ type: 'lead_updated', lead: q.getLead.get(req.params.id) });
+  broadcast({ type: 'lead_updated', lead: q.getLead.get(req.params.id) }, req.user.id);
   res.json({ success: true });
 });
 
@@ -472,6 +505,23 @@ const transporter = nodemailer.createTransport({
     pass: process.env.GMAIL_APP_PASSWORD || '',
   },
 });
+
+// Serper key pool -> owner email when down to the last healthy account (or
+// none at all) — otherwise this silently degrades to OpenStreetMap and the
+// owner would only find out when a customer complains about lead quality.
+if (process.env.GMAIL_APP_PASSWORD && process.env.OWNER_EMAIL) {
+  require('./agent/serper-pool').events.on('low-keys', ({ healthyCount, total, reason }) => {
+    const subject = healthyCount === 0
+      ? '🚨 LeadHunter: ALL Serper keys are dead — discovery has degraded to OpenStreetMap'
+      : `⚠️ LeadHunter: down to your last healthy Serper key (${healthyCount}/${total})`;
+    transporter.sendMail({
+      from: 'azk40772@gmail.com',
+      to: process.env.OWNER_EMAIL,
+      subject,
+      text: `${healthyCount} of ${total} Serper accounts still have credit.\n\nMost recent failure: ${reason}\n\nAdd another SERPER_API_KEY_N in Railway when you can — check the Owner dashboard for which accounts are dead.`,
+    }, (err) => { if (err) console.error('Low-key alert email failed:', err.message); });
+  });
+}
 
 app.post('/api/contact', (req, res) => {
   const { email, name, message } = req.body;
