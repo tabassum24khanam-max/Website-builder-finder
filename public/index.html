@@ -39,6 +39,46 @@
     overflow: hidden;
   }
 
+  /* Respect user motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ─── Animation Keyframes ─────────────────────────────────────────────────── */
+  @keyframes slideUpFade {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes chipPop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+  }
+  @keyframes panelSlideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes checkmarkPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  @keyframes barFill {
+    from { width: 0; }
+  }
+  @keyframes chartBarsRise {
+    from { height: 0; opacity: 0; }
+    to { height: 100%; opacity: 1; }
+  }
+  @keyframes logCrossfade {
+    0%, 10% { opacity: 0; }
+    15%, 85% { opacity: 1; }
+    90%, 100% { opacity: 0; }
+  }
+  @keyframes odometer {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
   /* Scrollbars */
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: var(--surface); }
@@ -211,6 +251,7 @@
     background: var(--amber-glow);
     color: var(--amber);
     box-shadow: 0 0 10px var(--amber-glow);
+    animation: chipPop 0.12s ease;
   }
 
   /* Form inputs */
@@ -363,18 +404,30 @@
     border-radius: var(--radius-lg);
     padding: 14px;
     cursor: pointer;
-    transition: all 0.15s;
-    animation: fadeInUp 0.3s ease;
+    transition: all 0.2s ease;
+    animation: slideUpFade 0.2s ease;
+    position: relative;
+    overflow: hidden;
   }
-  .lead-card:hover { border-color: var(--amber-dim); transform: translateY(-1px); }
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+  .lead-card:hover { border-color: var(--amber-dim); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(240, 165, 0, 0.1); }
+  .lead-card.expanding { animation: none; }
   .lead-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 8px; }
   .lead-card-name { font-weight: 600; font-size: 13.5px; color: var(--text); flex: 1; }
   .lead-card-meta { display: flex; flex-direction: column; gap: 4px; }
   .lead-card-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .lead-card-details {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height 0.25s ease, opacity 0.25s ease;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .lead-card.expanded .lead-card-details {
+    max-height: 300px;
+    opacity: 1;
+  }
 
   /* Score badge */
   .score-badge {
@@ -1128,6 +1181,15 @@
       <div id="user-info" style="margin-top:10px;font-size:12px;color:var(--text-dim);display:none;">
         <div id="user-email" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
         <div><span id="user-tier"></span> · <a href="#" onclick="openUpgrade();return false;">Upgrade</a> · <a href="#" onclick="logout();return false;">Log out</a></div>
+        <div style="margin-top:10px;">
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:11px;">
+            <span>Searches:</span>
+            <span id="usage-text">—</span>
+          </div>
+          <div style="height:4px;background:var(--surface2);border-radius:2px;overflow:hidden;">
+            <div id="usage-bar" style="height:100%;background:var(--amber);width:0;border-radius:2px;transition:width 0.4s ease;"></div>
+          </div>
+        </div>
       </div>
     </div>
   </nav>
@@ -2096,10 +2158,21 @@ function buildLeadCard(lead) {
   const email = lead.email || '';
   const ig = lead.instagram || lead.instagramHandle || '';
   const tt = lead.tiktok_handle || lead.tiktokHandle || '';
+  const address = lead.address || '';
+  const linkedin = lead.linkedin_owner_name || '';
+  const reasoning = lead.ai_reasoning || '';
 
   const card = document.createElement('div');
   card.className = 'lead-card';
-  card.onclick = () => openLeadModal(id);
+  card.id = `card-${id}`;
+  card.style.animationDelay = `${(state.currentCardIndex || 0) * 40}ms`;
+  state.currentCardIndex = (state.currentCardIndex || 0) + 1;
+
+  card.onclick = (e) => {
+    if (e.target.closest('a')) return; // Don't expand if clicking a link
+    card.classList.toggle('expanded');
+  };
+
   card.innerHTML = `
     <div class="lead-card-header">
       <div class="lead-card-name truncate">${escHtml(name)}</div>
@@ -2112,6 +2185,15 @@ function buildLeadCard(lead) {
       ${ig ? `<div class="lead-card-row">📸 <span class="truncate">@${escHtml(ig.replace('@',''))}</span></div>` : ''}
       ${tt ? `<div class="lead-card-row">🎵 <span class="truncate">@${escHtml(tt.replace('@',''))}</span></div>` : ''}
       <div class="lead-card-row"><a href="${googleSearchUrl(lead)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--blue);text-decoration:none;">🔎 Open on Google</a></div>
+    </div>
+    <div class="lead-card-details">
+      ${address ? `<div class="lead-card-row" style="margin-bottom:8px;">📍 ${escHtml(address)}</div>` : ''}
+      ${linkedin ? `<div class="lead-card-row" style="margin-bottom:8px;">💼 ${escHtml(linkedin)}</div>` : ''}
+      ${reasoning ? `<div style="font-size:11px;color:var(--text-dim);line-height:1.4;margin-bottom:8px;"><strong>AI Notes:</strong> ${escHtml(reasoning.substring(0, 120))}...</div>` : ''}
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <button onclick="openLeadModal('${id}');event.stopPropagation();" style="flex:1;padding:6px 10px;background:var(--amber);color:#000;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;">Full Details</button>
+        <button onclick="copyToClipboard('${id}');event.stopPropagation();" style="flex:1;padding:6px 10px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;">Copy</button>
+      </div>
     </div>
   `;
   return card;
@@ -2203,6 +2285,44 @@ document.querySelectorAll('.filter-tab').forEach(tab => {
     renderLeadsTable();
   });
 });
+
+// ============================================================
+//  UTILITY FUNCTIONS
+// ============================================================
+
+function copyToClipboard(leadId) {
+  const lead = state.allLeads.find(l => (l.id || l._id) === leadId);
+  if (!lead) return;
+
+  const name = lead.businessName || lead.name || 'Unknown';
+  const phone = lead.phone || '';
+  const email = lead.email || '';
+  const ig = lead.instagramHandle || '';
+  const text = `${name}\n${phone}\n${email}\n${ig}`;
+
+  navigator.clipboard.writeText(text).then(
+    () => showToast('success', '📋', 'Lead info copied!'),
+    () => { const el = document.createElement('textarea'); el.value = text; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); showToast('success', '📋', 'Lead info copied!'); }
+  );
+}
+
+function updateUsageBar() {
+  if (!state.currentUser) return;
+  const bar = document.getElementById('usage-bar');
+  const text = document.getElementById('usage-text');
+  if (!bar || !text) return;
+
+  const sub = state.currentUser.subscription || { searches_used: 0, searches_used_lifetime: 0 };
+  const tier = state.currentUser.tier || 'free';
+  const LIMITS = { free: 5, starter: 60, pro: 150 };
+  const cap = LIMITS[tier];
+  const used = tier === 'free' ? (sub.searches_used_lifetime || 0) : (sub.searches_used || 0);
+  const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 0;
+
+  text.textContent = `${used}/${cap}`;
+  bar.style.width = pct + '%';
+  bar.style.backgroundColor = pct >= 80 ? 'var(--red)' : pct >= 50 ? 'var(--orange)' : 'var(--amber)';
+}
 
 // ============================================================
 //  LEAD MODAL
@@ -3392,8 +3512,14 @@ async function checkAuth() {
   const tier = (data.subscription && data.subscription.tier) || 'free';
   document.getElementById('user-tier').textContent = tier.charAt(0).toUpperCase() + tier.slice(1) + ' plan';
 
+  // Store user data for updateUsageBar
+  state.currentUser = { ...data.user, tier, subscription: data.subscription };
+
   // Update radius options based on tier limits
   updateRadiusOptions(tier);
+
+  // Update usage bar
+  updateUsageBar();
 
   return data.user;
 }
