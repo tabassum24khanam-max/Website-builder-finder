@@ -166,6 +166,15 @@ function validateRadius(radiusKm, tier) {
   return { ok: true };
 }
 
+// Validate lead count against tier limits
+function validateCount(count, tier) {
+  const n = parseInt(count);
+  if (!tier.countOptions.includes(n) || n > tier.maxCount) {
+    return { ok: false, error: `Max leads per search on your plan is ${tier.maxCount}. Available: ${tier.countOptions.join(', ')}.` };
+  }
+  return { ok: true };
+}
+
 app.post('/api/searches', optionalAuth, (req, res) => {
   const {
     category, location, country = '',
@@ -175,7 +184,7 @@ app.post('/api/searches', optionalAuth, (req, res) => {
     exclude_names,
   } = req.body;
   const effectiveRadius = parseInt(radius_km || radius) || 5;
-  const effectiveCount = parseInt(limit_count || count) || 20;
+  const effectiveCount = parseInt(limit_count || count) || 6;
 
   const quota = checkQuota(req.user);
   const isOwnerUser = isOwner(req.user);
@@ -188,11 +197,15 @@ app.post('/api/searches', optionalAuth, (req, res) => {
     });
   }
 
-  // Validate radius against tier limits (owner bypass)
+  // Validate radius and lead count against tier limits (owner bypass)
   if (!isOwnerUser) {
     const radiusCheck = validateRadius(effectiveRadius, quota.tier);
     if (!radiusCheck.ok) {
       return res.status(400).json({ error: radiusCheck.error });
+    }
+    const countCheck = validateCount(effectiveCount, quota.tier);
+    if (!countCheck.ok) {
+      return res.status(400).json({ error: countCheck.error });
     }
   }
 

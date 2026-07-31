@@ -1297,22 +1297,24 @@
           <div class="form-group">
             <label class="form-label">Search Radius</label>
             <select id="radius-select">
-              <option value="1">1 km</option>
-              <option value="2">2 km</option>
-              <option value="5" selected>5 km</option>
-              <option value="10">10 km</option>
-              <option value="20">20 km</option>
-              <option value="50">50 km</option>
+              <option value="1" data-tier="free">1 km</option>
+              <option value="2" data-tier="free">2 km</option>
+              <option value="5" data-tier="free" selected>5 km</option>
+              <option value="10" data-tier="starter">10 km</option>
+              <option value="20" data-tier="starter">20 km</option>
+              <option value="50" data-tier="pro">50 km</option>
             </select>
           </div>
           <div class="form-group">
             <label class="form-label">Result Count</label>
             <select id="count-select">
-              <option value="5">5 leads</option>
-              <option value="10">10 leads</option>
-              <option value="20" selected>20 leads</option>
-              <option value="30">30 leads</option>
-              <option value="50">50 leads</option>
+              <option value="3" data-tier="free">3 leads</option>
+              <option value="6" data-tier="free" selected>6 leads</option>
+              <option value="10" data-tier="starter">10 leads</option>
+              <option value="20" data-tier="starter">20 leads</option>
+              <option value="30" data-tier="pro">30 leads</option>
+              <option value="40" data-tier="pro">40 leads</option>
+              <option value="50" data-tier="pro">50 leads</option>
             </select>
           </div>
           <div class="form-group">
@@ -1324,9 +1326,9 @@
           </div>
           <div class="form-group">
             <label class="form-label">Search engine</label>
-            <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;" title="When ON, an AI agent researches each business like a human (opens its site, Instagram, delivery & directory pages) instead of a single Serper query. Slower and uses more AI, but more thorough.">
+            <label id="ai-mode-label" style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;" title="When ON, an AI agent researches each business like a human (opens its site, Instagram, delivery & directory pages) instead of a single Serper query. Slower and uses more AI, but more thorough.">
               <input type="checkbox" id="ai-mode" style="accent-color:var(--amber);width:16px;height:16px;cursor:pointer;">
-              <span>🤖 AI deep search <span style="color:var(--text-dim)">(slower, more thorough)</span></span>
+              <span>🤖 AI deep search <span id="ai-mode-usage" style="color:var(--text-dim)">(slower, more thorough)</span></span>
             </label>
           </div>
         </div>
@@ -1900,6 +1902,7 @@ function handleSearchComplete(searchId, total, researchMode, noNewResults) {
   updateBadge();
   if (state.currentPage === 'all-leads') renderLeadsTable();
   if (state.currentPage === 'analytics') renderAnalytics();
+  checkAuth(); // refresh usage bar + AI-mode remaining count — this search just consumed quota
 }
 
 function handleSearchError(searchId, error) {
@@ -3515,8 +3518,8 @@ async function checkAuth() {
   // Store user data for updateUsageBar
   state.currentUser = { ...data.user, tier, subscription: data.subscription };
 
-  // Update radius options based on tier limits
-  updateRadiusOptions(tier);
+  // Grey out (not hide) options above this tier, with an upgrade label
+  applyTierGating(tier, data.subscription);
 
   // Update usage bar
   updateUsageBar();
@@ -3524,29 +3527,57 @@ async function checkAuth() {
   return data.user;
 }
 
-function updateRadiusOptions(tier) {
-  const radiusSelect = document.getElementById('radius-select');
-  if (!radiusSelect) return;
+// Every <option> in radius-select / count-select carries data-tier="free|starter|pro".
+// Options above the caller's tier stay visible but disabled and get a
+// "— Starter" / "— Pro" suffix, so upgrading feels like unlocking something
+// specific instead of options just appearing out of nowhere.
+const TIER_RANK = { free: 0, starter: 1, pro: 2 };
 
-  // Define radius limits per tier
-  const tierLimits = {
-    free: [1, 2, 5],
-    starter: [1, 2, 5, 10, 20],
-    pro: [1, 2, 5, 10, 20, 50],
-  };
+function gateSelectOptions(selectEl, tier) {
+  if (!selectEl) return;
+  const myRank = TIER_RANK[tier] ?? 0;
+  let firstAllowedValue = null;
 
-  const allowedOptions = tierLimits[tier] || tierLimits.free;
-  const allOptions = radiusSelect.querySelectorAll('option');
-  const currentValue = radiusSelect.value;
-
-  allOptions.forEach(opt => {
-    const val = parseInt(opt.value);
-    opt.style.display = allowedOptions.includes(val) ? '' : 'none';
+  selectEl.querySelectorAll('option').forEach(opt => {
+    const optTier = opt.dataset.tier || 'free';
+    const locked = TIER_RANK[optTier] > myRank;
+    // Strip any previously-appended label before deciding base text
+    const baseText = opt.textContent.replace(/\s*—\s*(Starter|Pro)$/, '');
+    opt.textContent = locked ? `${baseText} — ${optTier.charAt(0).toUpperCase() + optTier.slice(1)}` : baseText;
+    opt.disabled = locked;
+    if (!locked && firstAllowedValue === null) firstAllowedValue = opt.value;
   });
 
-  // Reset to first available option if current is disabled
-  if (!allowedOptions.includes(parseInt(currentValue))) {
-    radiusSelect.value = allowedOptions[0];
+  const selectedOpt = selectEl.options[selectEl.selectedIndex];
+  if (!selectedOpt || selectedOpt.disabled) {
+    if (firstAllowedValue !== null) selectEl.value = firstAllowedValue;
+  }
+}
+
+function applyTierGating(tier, subscription) {
+  gateSelectOptions(document.getElementById('radius-select'), tier);
+  gateSelectOptions(document.getElementById('count-select'), tier);
+
+  // AI deep search: greyed out entirely on Free, shows remaining uses on Starter/Pro
+  const AI_CAPS = { free: 0, starter: 5, pro: 20 };
+  const cap = AI_CAPS[tier] ?? 0;
+  const aiCheckbox = document.getElementById('ai-mode');
+  const aiUsageLabel = document.getElementById('ai-mode-usage');
+  const aiLabel = document.getElementById('ai-mode-label');
+  if (aiCheckbox && aiUsageLabel && aiLabel) {
+    if (cap === 0) {
+      aiCheckbox.checked = false;
+      aiCheckbox.disabled = true;
+      aiLabel.style.opacity = '0.5';
+      aiLabel.style.cursor = 'not-allowed';
+      aiUsageLabel.textContent = '(Starter+ only)';
+    } else {
+      const used = (subscription && subscription.ai_searches_used) || 0;
+      aiCheckbox.disabled = false;
+      aiLabel.style.opacity = '1';
+      aiLabel.style.cursor = 'pointer';
+      aiUsageLabel.textContent = `(${Math.max(0, cap - used)}/${cap} left this month)`;
+    }
   }
 }
 
