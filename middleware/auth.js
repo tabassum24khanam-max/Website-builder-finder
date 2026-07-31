@@ -9,6 +9,12 @@ function isGuestEmail(email) {
   return typeof email === 'string' && email.endsWith(GUEST_EMAIL_SUFFIX);
 }
 
+// Single source of truth for "who's the owner" — one env var, no DB flag to
+// drift out of sync. Same check server.js already used for quota bypass.
+function isOwnerEmail(email) {
+  return !!process.env.OWNER_EMAIL && email === process.env.OWNER_EMAIL;
+}
+
 // Creates a free-tier account with no email/password and logs the current
 // session into it. Shared by optionalAuth (API routes) and POST /api/auth/guest
 // (the frontend's silent first-visit call) so there's one place this happens.
@@ -67,4 +73,15 @@ function optionalAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, optionalAuth, provisionGuest, isGuestEmail };
+// Blocks the request unless the session belongs to the owner account.
+function requireOwner(req, res, next) {
+  const userId = req.session && req.session.userId;
+  const user = userId && q.getUserById.get(userId);
+  if (!user || !isOwnerEmail(user.email)) {
+    return res.status(403).json({ error: 'Owner access required.' });
+  }
+  req.user = user;
+  next();
+}
+
+module.exports = { requireAuth, optionalAuth, requireOwner, provisionGuest, isGuestEmail, isOwnerEmail };

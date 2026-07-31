@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuid } = require('uuid');
 const { q } = require('../db');
-const { provisionGuest, isGuestEmail } = require('../middleware/auth');
+const { provisionGuest, isGuestEmail, isOwnerEmail } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -10,7 +10,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const BCRYPT_ROUNDS = 12;
 
 function publicUser(user) {
-  return { id: user.id, email: user.email, isGuest: isGuestEmail(user.email) };
+  return { id: user.id, email: user.email, isGuest: isGuestEmail(user.email), isOwner: isOwnerEmail(user.email) };
 }
 
 // Called once on first page load when there's no session yet. Silently gives

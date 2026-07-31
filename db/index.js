@@ -9,19 +9,11 @@ const db = new Database(path.join(dataDir, 'leadhunter.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-// Migrations for existing databases
-try { db.exec('ALTER TABLE leads ADD COLUMN lat REAL'); } catch (_) {}
-try { db.exec('ALTER TABLE leads ADD COLUMN lng REAL'); } catch (_) {}
-try { db.exec('ALTER TABLE leads ADD COLUMN photo_url TEXT'); } catch (_) {}
-try { db.exec('ALTER TABLE leads ADD COLUMN owner_phone TEXT'); } catch (_) {}
-try { db.exec('ALTER TABLE leads ADD COLUMN tiktok_handle TEXT'); } catch (_) {}
-try { db.exec('ALTER TABLE leads ADD COLUMN tiktok_url TEXT'); } catch (_) {}
-try { db.exec('ALTER TABLE searches ADD COLUMN user_id TEXT'); } catch (_) {}
-try { db.exec('ALTER TABLE subscriptions ADD COLUMN ai_searches_used INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
-try { db.exec('ALTER TABLE searches ADD COLUMN research_rounds_used INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
-try { db.exec('ALTER TABLE searches ADD COLUMN ai_mode_used BOOLEAN DEFAULT 0'); } catch (_) {}
-try { db.exec('ALTER TABLE users ADD COLUMN is_owner BOOLEAN DEFAULT 0'); } catch (_) {}
-
+// Base schema MUST be created before the migrations below run — on a brand
+// new database (e.g. a freshly mounted Railway volume) these ALTER TABLEs
+// would otherwise silently no-op against tables that don't exist yet, and
+// the CREATE INDEX statements further down would then crash the process on
+// every boot (indexing a column that never got added).
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id            TEXT PRIMARY KEY,
@@ -112,7 +104,24 @@ db.exec(`
     sent_at     BOOLEAN DEFAULT 0,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+`);
 
+// Migrations for existing databases — now guaranteed to run against tables
+// that exist (either just created above, or pre-existing from an older
+// deploy), so these safely no-op only when the column is already present.
+try { db.exec('ALTER TABLE leads ADD COLUMN lat REAL'); } catch (_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN lng REAL'); } catch (_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN photo_url TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN owner_phone TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN tiktok_handle TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE leads ADD COLUMN tiktok_url TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE searches ADD COLUMN user_id TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE subscriptions ADD COLUMN ai_searches_used INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE searches ADD COLUMN research_rounds_used INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE searches ADD COLUMN ai_mode_used BOOLEAN DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN is_owner BOOLEAN DEFAULT 0'); } catch (_) {}
+
+db.exec(`
   CREATE INDEX IF NOT EXISTS idx_leads_search ON leads(search_id);
   CREATE INDEX IF NOT EXISTS idx_leads_score  ON leads(ai_score DESC);
   CREATE INDEX IF NOT EXISTS idx_searches_user ON searches(user_id);
@@ -239,6 +248,19 @@ const q = {
   `),
   incrementResearchRounds: db.prepare(`
     UPDATE searches SET research_rounds_used = research_rounds_used + 1 WHERE id = ?
+  `),
+
+  // Owner portal — read-only aggregate/list views, never exposed except via requireOwner routes.
+  countRealUsers: db.prepare(`SELECT COUNT(*) n FROM users WHERE email NOT LIKE '%@leadhunter.local'`),
+  countGuestUsers: db.prepare(`SELECT COUNT(*) n FROM users WHERE email LIKE '%@leadhunter.local'`),
+  countSubsByTierStatus: db.prepare(`SELECT tier, status, COUNT(*) n FROM subscriptions GROUP BY tier, status`),
+  countAllSearches: db.prepare(`SELECT COUNT(*) n FROM searches`),
+  countAllLeads: db.prepare(`SELECT COUNT(*) n FROM leads`),
+  listUsersForOwner: db.prepare(`
+    SELECT u.id, u.email, u.created_at,
+           s.tier, s.status, s.searches_used, s.searches_used_lifetime, s.ai_searches_used
+    FROM users u LEFT JOIN subscriptions s ON s.user_id = u.id
+    ORDER BY u.created_at DESC LIMIT 500
   `),
 };
 

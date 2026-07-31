@@ -14,7 +14,8 @@ const { getTier } = require('./db/tiers');
 const SqliteSessionStore = require('./db/session-store');
 const authRouter = require('./routes/auth');
 const billingRouter = require('./routes/billing');
-const { requireAuth, optionalAuth } = require('./middleware/auth');
+const ownerRouter = require('./routes/owner');
+const { requireAuth, optionalAuth, isOwnerEmail } = require('./middleware/auth');
 const { runSearch, stopSearch } = require('./agent');
 const nodemailer = require('nodemailer');
 
@@ -45,6 +46,7 @@ app.use(session({
 }));
 app.use('/api/auth', authRouter);
 app.use('/api/billing', billingRouter);
+app.use('/api/owner', ownerRouter);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── WebSocket broadcast helpers ────────────────────────────────────────────
@@ -128,7 +130,7 @@ app.delete('/api/searches/:id', requireAuth, (req, res) => {
 
 // Check if user is the owner (unlimited everything)
 function isOwner(user) {
-  return user && user.email === process.env.OWNER_EMAIL;
+  return !!user && isOwnerEmail(user.email);
 }
 
 // Reset monthly AI usage if billing period has ended

@@ -4,16 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LeadHunter AI v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0a0b0d;
     --surface: #111318;
     --surface2: #181c24;
+    --surface3: #1f2530;
     --border: #1e2430;
     --amber: #f0a500;
     --amber-dim: #b87d00;
     --amber-glow: rgba(240,165,0,0.15);
+    --coral: #ff6b6b;
+    --coral-glow: rgba(255,107,107,0.15);
     --green: #22c55e;
+    --green-glow: rgba(34,197,94,0.15);
     --red: #ef4444;
     --blue: #3b82f6;
     --orange: #f97316;
@@ -25,6 +32,10 @@
     --sidebar-w: 240px;
     --radius: 8px;
     --radius-lg: 12px;
+    --radius-xl: 18px;
+    --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -8px rgba(0,0,0,0.5);
+    --shadow-lift: 0 4px 8px rgba(0,0,0,0.35), 0 16px 40px -12px rgba(240,165,0,0.18);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,6 +49,11 @@
     line-height: 1.5;
     overflow: hidden;
   }
+
+  /* Marketing screens (landing/auth) scroll the page itself */
+  body.screen-scroll { overflow: auto; }
+
+  h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.02em; }
 
   /* Respect user motion preferences */
   @media (prefers-reduced-motion: reduce) {
@@ -109,6 +125,7 @@
   .sidebar-logo .logo-title {
     font-size: 20px;
     font-weight: 800;
+    font-family: var(--font-display);
     color: var(--amber);
     letter-spacing: -0.5px;
   }
@@ -200,7 +217,7 @@
     justify-content: space-between;
     flex-shrink: 0;
   }
-  .page-title { font-size: 22px; font-weight: 700; color: var(--text); }
+  .page-title { font-size: 22px; font-weight: 700; color: var(--text); font-family: var(--font-display); }
   .page-sub { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
 
   /* Cards / Panels */
@@ -712,7 +729,7 @@
     gap: 12px;
     flex-shrink: 0;
   }
-  .modal-title { font-size: 18px; font-weight: 700; color: var(--text); }
+  .modal-title { font-size: 18px; font-weight: 700; color: var(--text); font-family: var(--font-display); }
   .modal-sub { font-size: 12.5px; color: var(--text-dim); margin-top: 3px; }
   .modal-close {
     background: none; border: none; cursor: pointer;
@@ -925,6 +942,241 @@
   #paypal-btn-pro iframe {
     border-radius: 6px !important;
   }
+
+  /* ════════════════════════════════════════════════════════════════════
+     LANDING PAGE
+     ════════════════════════════════════════════════════════════════════ */
+  #screen-landing {
+    min-height: 100%;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(240,165,0,0.16), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 90% 10%, rgba(255,107,107,0.10), transparent 55%),
+      var(--bg);
+    color: var(--text);
+  }
+  .landing-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 22px 24px;
+  }
+  .landing-nav .logo-title { font-size: 19px; font-weight: 700; color: var(--amber); font-family: var(--font-display); }
+  .landing-nav-links { display: flex; align-items: center; gap: 10px; }
+
+  .landing-hero {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 64px 24px 40px;
+    text-align: center;
+  }
+  .landing-eyebrow {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; font-weight: 600; color: var(--amber);
+    background: var(--amber-glow); border: 1px solid rgba(240,165,0,0.25);
+    padding: 6px 14px; border-radius: 20px; margin-bottom: 22px;
+  }
+  .landing-hero h1 {
+    font-size: clamp(32px, 5.5vw, 52px);
+    font-weight: 700;
+    line-height: 1.12;
+    margin-bottom: 18px;
+  }
+  .landing-hero h1 .accent { color: var(--amber); }
+  .landing-hero p.lead {
+    font-size: 16.5px;
+    color: var(--text-dim);
+    max-width: 560px;
+    margin: 0 auto 30px;
+    line-height: 1.6;
+  }
+  .landing-cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .landing-fineprint { font-size: 12.5px; color: var(--text-muted); }
+
+  .btn-lg { padding: 14px 26px; font-size: 15px; border-radius: 10px; }
+
+  /* Animated live-search preview */
+  .landing-demo {
+    max-width: 620px;
+    margin: 48px auto 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-card);
+    overflow: hidden;
+    text-align: left;
+  }
+  .landing-demo-bar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .landing-demo-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+  .landing-demo-title { margin-left: 8px; font-size: 12px; color: var(--text-dim); font-weight: 600; }
+  .landing-demo-body { padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 10px; min-height: 210px; }
+  .landing-demo-query { font-size: 13px; color: var(--text-dim); }
+  .landing-demo-query b { color: var(--text); font-weight: 600; }
+  .landing-demo-card {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 11px 14px;
+    opacity: 0; transform: translateY(10px);
+    animation: slideUpFade 0.4s ease forwards;
+  }
+  .landing-demo-card .biz-icon { font-size: 18px; }
+  .landing-demo-card .biz-name { font-weight: 600; font-size: 13px; color: var(--text); }
+  .landing-demo-card .biz-tag { font-size: 11px; color: var(--red); }
+  .landing-demo-card .biz-score {
+    margin-left: auto; font-size: 11px; font-weight: 700; color: var(--bg);
+    background: var(--green); padding: 3px 8px; border-radius: 6px;
+  }
+
+  .landing-section { max-width: 1080px; margin: 0 auto; padding: 60px 24px; }
+  .landing-section-title { font-size: 26px; font-weight: 700; text-align: center; margin-bottom: 8px; }
+  .landing-section-sub { font-size: 14px; color: var(--text-dim); text-align: center; margin-bottom: 42px; }
+
+  .benefit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+  .benefit-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 24px; transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .benefit-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lift); border-color: rgba(240,165,0,0.3); }
+  .benefit-icon { font-size: 26px; margin-bottom: 14px; }
+  .benefit-title { font-weight: 700; font-size: 14.5px; margin-bottom: 6px; }
+  .benefit-desc { font-size: 13px; color: var(--text-dim); line-height: 1.55; }
+
+  .mini-pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; margin-bottom: 26px; }
+  .mini-price-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 22px; text-align: center; transition: transform 0.18s ease, box-shadow 0.18s ease;
+  }
+  .mini-price-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-card); }
+  .mini-price-card.popular { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset; }
+  .mini-price-card .plan-name { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
+  .mini-price-card .plan-price { font-family: var(--font-display); font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  .mini-price-card .plan-price span { font-size: 12px; color: var(--text-dim); font-family: 'Inter'; }
+  .mini-price-card .plan-detail { font-size: 12px; color: var(--text-dim); margin-bottom: 16px; }
+
+  .faq-item { border-bottom: 1px solid var(--border); }
+  .faq-q {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 4px; cursor: pointer; font-weight: 600; font-size: 14px; user-select: none;
+  }
+  .faq-q .faq-arrow { transition: transform 0.2s ease; color: var(--text-dim); }
+  .faq-item.open .faq-q .faq-arrow { transform: rotate(180deg); }
+  .faq-a {
+    max-height: 0; overflow: hidden; transition: max-height 0.25s ease;
+    font-size: 13.5px; color: var(--text-dim); line-height: 1.6;
+  }
+  .faq-item.open .faq-a { max-height: 200px; padding-bottom: 18px; }
+
+  .landing-footer {
+    border-top: 1px solid var(--border);
+    padding: 28px 24px 40px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12.5px;
+  }
+  .landing-footer a { color: var(--text-dim); text-decoration: none; margin: 0 10px; }
+  .landing-footer a:hover { color: var(--amber); }
+
+  /* ════════════════════════════════════════════════════════════════════
+     AUTH SCREEN (login / signup / claim) — full immersive split view
+     ════════════════════════════════════════════════════════════════════ */
+  #auth-gate.auth-fullscreen { background: var(--bg); }
+  .auth-shell {
+    max-width: 900px; width: 100%; margin: 0 auto;
+    min-height: 100vh; display: flex; align-items: stretch;
+  }
+  .auth-brand-panel {
+    flex: 1; min-width: 0;
+    background:
+      radial-gradient(ellipse 500px 400px at 30% 20%, rgba(240,165,0,0.18), transparent 60%),
+      var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 48px 40px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .auth-brand-panel .logo-title { font-size: 22px; font-weight: 700; color: var(--amber); font-family: var(--font-display); margin-bottom: 28px; }
+  .auth-brand-panel h2 { font-size: 24px; font-weight: 700; line-height: 1.3; margin-bottom: 14px; }
+  .auth-brand-panel p { font-size: 13.5px; color: var(--text-dim); line-height: 1.7; margin-bottom: 22px; }
+  .auth-brand-feature { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-dim); margin-bottom: 10px; }
+  .auth-brand-feature .check { color: var(--green); }
+
+  .auth-form-panel {
+    flex: 1; min-width: 0;
+    padding: 48px 44px;
+    display: flex; flex-direction: column; justify-content: center;
+    position: relative;
+  }
+  @media (max-width: 720px) {
+    .auth-shell { flex-direction: column; }
+    .auth-brand-panel { border-right: none; border-bottom: 1px solid var(--border); padding: 32px 28px; }
+    .auth-form-panel { padding: 32px 28px; }
+  }
+  .auth-form-panel .form-title { font-size: 21px; font-weight: 700; margin-bottom: 6px; }
+  .auth-form-panel .form-subtitle { font-size: 13px; color: var(--text-dim); margin-bottom: 26px; }
+
+  .pw-strength { display: flex; gap: 4px; margin-top: 8px; }
+  .pw-strength-seg { height: 3px; flex: 1; border-radius: 2px; background: var(--border); transition: background 0.2s; }
+  .pw-strength-label { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+
+  .auth-guest-link { text-align: center; margin-top: 18px; font-size: 12.5px; }
+
+  /* ════════════════════════════════════════════════════════════════════
+     CHIP-ROW SELECTORS (radius / result count) — visual layer over a
+     hidden native <select> so all existing .value / .options reads keep working
+     ════════════════════════════════════════════════════════════════════ */
+  .select-visually-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip-opt {
+    padding: 7px 13px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text-dim); cursor: pointer;
+    font-size: 12.5px; font-weight: 600; transition: all 0.15s; user-select: none;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .chip-opt:hover { border-color: var(--amber-dim); color: var(--text); }
+  .chip-opt.selected {
+    border-color: var(--amber); background: var(--amber-glow); color: var(--amber);
+    animation: chipPop 0.12s ease;
+  }
+  .chip-opt.locked { opacity: 0.55; }
+  .chip-opt.locked .lock-tag {
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+    background: var(--surface3); padding: 1px 5px; border-radius: 4px; color: var(--text-muted);
+  }
+
+  .more-options-toggle {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12.5px; color: var(--amber); cursor: pointer; user-select: none;
+    font-weight: 600; margin: -4px 0 4px;
+  }
+  .more-options-toggle .arrow { transition: transform 0.2s ease; font-size: 10px; }
+  .more-options-toggle.open .arrow { transform: rotate(90deg); }
+  .more-options-panel {
+    max-height: 0; overflow: hidden; transition: max-height 0.25s ease;
+  }
+  .more-options-panel.open { max-height: 400px; }
+
+  /* ════════════════════════════════════════════════════════════════════
+     OWNER PORTAL
+     ════════════════════════════════════════════════════════════════════ */
+  .owner-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+  .owner-stat-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    padding: 18px 20px;
+  }
+  .owner-stat-value { font-family: var(--font-display); font-size: 26px; font-weight: 700; color: var(--amber); }
+  .owner-stat-label { font-size: 11.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 4px; }
+  .owner-badge {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px;
+    padding: 2px 8px; border-radius: 5px; background: var(--amber-glow); color: var(--amber);
+    border: 1px solid rgba(240,165,0,0.25); margin-left: 8px; vertical-align: middle;
+  }
+
+  /* Generic hover-lift for interactive panels (opt-in) */
+  .panel-hover { transition: transform 0.18s ease, box-shadow 0.18s ease; }
+  .panel-hover:hover { transform: translateY(-2px); box-shadow: var(--shadow-card); }
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -942,28 +1194,147 @@
 </style>
 </head>
 <body>
-<!-- Minimal auth gate — placeholder until the real UI ships. Toggled by checkAuth(). -->
-<div id="auth-gate" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);overflow-y:auto;" onclick="if(event.target===this)closeAuthGate();">
-  <div class="panel" style="max-width:380px;margin:12vh auto 0;">
-    <div class="panel-header">
-      <span class="panel-title" id="auth-gate-title">Log In</span>
-      <a href="#" id="auth-gate-close" onclick="closeAuthGate();return false;" style="color:var(--text-dim);display:none;">✕</a>
+<!-- ════════════════════════════════════════════════════════════════════
+     LANDING PAGE — first thing a brand-new visitor sees. Returning
+     sessions (guest or real) skip straight to #app via checkAuth().
+     ════════════════════════════════════════════════════════════════════ -->
+<div id="screen-landing" style="display:none;">
+  <div class="landing-nav">
+    <div class="logo-title">⚡ LeadHunter AI</div>
+    <div class="landing-nav-links">
+      <button class="btn btn-ghost btn-sm" onclick="openAuthGate('login','landing');return false;">Log in</button>
+      <button class="btn btn-amber btn-sm" onclick="landingTryFree();return false;">Try free</button>
     </div>
-    <div style="padding:20px;">
-      <div id="auth-gate-subtitle" style="font-size:12.5px;color:var(--text-dim);margin-bottom:14px;display:none;"></div>
-      <div class="form-group">
+  </div>
+
+  <div class="landing-hero">
+    <div class="landing-eyebrow">⚡ AI-powered lead generation</div>
+    <h1>Find businesses that <span class="accent">need a website</span> — in 60 seconds</h1>
+    <p class="lead">Search any city, get a ranked list of local businesses with no website (or a bad one), plus their phone, email, and socials — ready to pitch.</p>
+    <div class="landing-cta-row">
+      <button class="btn btn-amber btn-lg" onclick="landingTryFree();return false;">▶ Try free — 5 searches, no signup</button>
+      <button class="btn btn-ghost btn-lg" onclick="openUpgrade();return false;">See pricing</button>
+    </div>
+    <div class="landing-fineprint">No credit card required · Cancel anytime</div>
+
+    <div class="landing-demo" aria-hidden="true">
+      <div class="landing-demo-bar">
+        <span class="landing-demo-dot"></span><span class="landing-demo-dot"></span><span class="landing-demo-dot"></span>
+        <span class="landing-demo-title">🔍 New Search</span>
+      </div>
+      <div class="landing-demo-body" id="landing-demo-body"></div>
+    </div>
+  </div>
+
+  <div class="landing-section" style="padding-top:20px;">
+    <div class="landing-section-title">Everything you need to pitch smarter</div>
+    <div class="landing-section-sub">Built for freelancers and agencies selling websites &amp; marketing.</div>
+    <div class="benefit-grid">
+      <div class="benefit-card">
+        <div class="benefit-icon">⚡</div>
+        <div class="benefit-title">Fast discovery</div>
+        <div class="benefit-desc">Type a city and category — get a scored list of real local businesses in under a minute.</div>
+      </div>
+      <div class="benefit-card">
+        <div class="benefit-icon">🔓</div>
+        <div class="benefit-title">No signup wall</div>
+        <div class="benefit-desc">Your first 5 searches run instantly as a guest. Add an email only when you want to save your leads.</div>
+      </div>
+      <div class="benefit-card">
+        <div class="benefit-icon">🤖</div>
+        <div class="benefit-title">AI deep research</div>
+        <div class="benefit-desc">Let an AI agent visit each business's site &amp; socials like a human to fill in the gaps a normal search misses.</div>
+      </div>
+      <div class="benefit-card">
+        <div class="benefit-icon">📤</div>
+        <div class="benefit-title">Export &amp; track</div>
+        <div class="benefit-desc">Push leads to Excel or PDF, track outreach status, and revisit any past search from your history.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="landing-section" style="padding-top:10px;">
+    <div class="landing-section-title">Simple, transparent pricing</div>
+    <div class="landing-section-sub">Start free. Upgrade only when you need more searches or AI deep search.</div>
+    <div class="mini-pricing-grid">
+      <div class="mini-price-card">
+        <div class="plan-name">Free</div>
+        <div class="plan-price">$0</div>
+        <div class="plan-detail">5 searches, lifetime</div>
+        <button class="btn btn-ghost" style="width:100%;" onclick="landingTryFree();return false;">Start free</button>
+      </div>
+      <div class="mini-price-card popular">
+        <div class="plan-name">Starter</div>
+        <div class="plan-price">$9<span>/mo</span></div>
+        <div class="plan-detail">60 searches/month</div>
+        <button class="btn btn-amber" style="width:100%;" onclick="openUpgrade();return false;">Choose Starter</button>
+      </div>
+      <div class="mini-price-card">
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">$19.99<span>/mo</span></div>
+        <div class="plan-detail">150 searches/month + AI deep search</div>
+        <button class="btn btn-ghost" style="width:100%;" onclick="openUpgrade();return false;">Choose Pro</button>
+      </div>
+    </div>
+    <div style="text-align:center;">
+      <a href="#" onclick="openUpgrade();return false;" style="color:var(--amber);font-size:13px;text-decoration:none;font-weight:600;">See full plan comparison →</a>
+    </div>
+  </div>
+
+  <div class="landing-section" style="padding-top:10px;max-width:720px;">
+    <div class="landing-section-title" style="margin-bottom:24px;">Frequently asked questions</div>
+    <div id="landing-faq"></div>
+  </div>
+
+  <div class="landing-footer">
+    <div style="margin-bottom:10px;">
+      <a href="#" onclick="openAuthGate('login','landing');return false;">Log in</a>
+      <a href="#" onclick="landingTryFree();return false;">Try free</a>
+      <a href="#" onclick="openUpgrade();return false;">Pricing</a>
+      <a href="#" onclick="openContactForm();return false;">Help</a>
+    </div>
+    © 2026 LeadHunter AI. All rights reserved.
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     AUTH SCREEN — login / signup / claim. Full-bleed split view.
+     Toggled by openAuthGate()/closeAuthGate(); logic lives near checkAuth().
+     ════════════════════════════════════════════════════════════════════ -->
+<div id="auth-gate" class="auth-fullscreen" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--bg);overflow-y:auto;">
+  <div class="auth-shell">
+    <div class="auth-brand-panel">
+      <div class="logo-title">⚡ LeadHunter AI</div>
+      <h2>Never run out of businesses to pitch.</h2>
+      <p>Search by city and category, get a ranked list of leads with contact info and socials already filled in.</p>
+      <div class="auth-brand-feature"><span class="check">✓</span> 5 free searches, no card required</div>
+      <div class="auth-brand-feature"><span class="check">✓</span> Phone, email &amp; social handles included</div>
+      <div class="auth-brand-feature"><span class="check">✓</span> Export to Excel or PDF anytime</div>
+    </div>
+    <div class="auth-form-panel">
+      <a href="#" id="auth-gate-close" onclick="closeAuthGate();return false;" style="position:absolute;top:20px;right:28px;color:var(--text-dim);font-size:18px;text-decoration:none;">✕</a>
+      <div class="form-title" id="auth-gate-title">Log In</div>
+      <div class="form-subtitle" id="auth-gate-subtitle" style="display:none;"></div>
+      <div class="form-group" style="margin-bottom:14px;">
         <label class="form-label">Email</label>
         <input type="email" id="auth-email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')submitAuth();">
       </div>
       <div class="form-group">
         <label class="form-label">Password</label>
-        <input type="password" id="auth-password" placeholder="At least 8 characters" onkeydown="if(event.key==='Enter')submitAuth();">
+        <input type="password" id="auth-password" placeholder="At least 8 characters" oninput="updatePasswordStrength()" onkeydown="if(event.key==='Enter')submitAuth();">
+        <div class="pw-strength" id="pw-strength" style="display:none;">
+          <div class="pw-strength-seg"></div><div class="pw-strength-seg"></div><div class="pw-strength-seg"></div><div class="pw-strength-seg"></div>
+        </div>
+        <div class="pw-strength-label" id="pw-strength-label"></div>
       </div>
-      <div id="auth-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
-      <button class="btn btn-amber" id="auth-submit-btn" style="width:100%;" onclick="submitAuth()">Log In</button>
+      <div id="auth-error" style="color:var(--red);font-size:13px;margin:12px 0 0;display:none;"></div>
+      <button class="btn btn-amber" id="auth-submit-btn" style="width:100%;margin-top:18px;" onclick="submitAuth()">Log In</button>
       <div style="text-align:center;margin-top:14px;font-size:13px;color:var(--text-dim);" id="auth-toggle-row">
         <span id="auth-toggle-text">No account?</span>
         <a href="#" onclick="toggleAuthMode();return false;" id="auth-toggle-link">Sign up</a>
+      </div>
+      <div class="auth-guest-link" id="auth-guest-row">
+        <a href="#" onclick="continueAsGuestFromAuth();return false;" style="color:var(--text-dim);text-decoration:underline;">Or continue as guest — no signup needed</a>
       </div>
     </div>
   </div>
@@ -1172,6 +1543,10 @@
         <span class="nav-icon">📊</span>
         <span class="nav-label">Analytics</span>
       </div>
+      <div class="nav-item" data-page="owner" id="nav-owner" style="display:none;">
+        <span class="nav-icon">👑</span>
+        <span class="nav-label">Owner</span>
+      </div>
       <div class="nav-item" onclick="openContactForm();return false;" style="cursor:pointer;">
         <span class="nav-icon">❓</span>
         <span class="nav-label">Help</span>
@@ -1255,29 +1630,38 @@
           </div>
         </div>
 
-        <div class="form-row-3" style="margin-bottom:16px;">
-          <div class="form-group">
-            <label class="form-label">Country</label>
-            <input type="text" id="country-input" placeholder="e.g. UAE, Saudi Arabia">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Zip / Postal Code <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional)</span></label>
-            <input type="text" id="zip-input" placeholder="e.g. 11564">
-          </div>
-          <div class="form-group">
-            <label class="form-label">Street / Neighborhood <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional)</span></label>
-            <input type="text" id="street-input" placeholder="e.g. King Fahd Rd, SoHo">
-          </div>
+        <!-- Advanced location fields — collapsed by default so a first-time
+             visitor sees one clean "City / Area" box, not six inputs at once.
+             Autocomplete/GPS can still silently fill these while collapsed. -->
+        <div class="more-options-toggle" id="more-options-toggle" onclick="toggleMoreOptions()">
+          <span class="arrow">▸</span>
+          <span>More location options — country, zip, neighborhood, or paste a map link/pin</span>
         </div>
-
-        <!-- Paste a location: Google Maps link, Plus Code, or lat,lng -->
-        <div class="form-group" style="margin-bottom:16px;">
-          <label class="form-label">📍 Or paste a location <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(Google Maps link, Plus Code, or lat,lng — the search starts there)</span></label>
-          <div style="display:flex;gap:8px;">
-            <input type="text" id="location-link" autocomplete="off" placeholder="e.g. https://maps.app.goo.gl/…  ·  PQF5+HX3 Riyadh  ·  24.7239,46.7599" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();resolvePastedLocation();}">
-            <button class="btn btn-amber" type="button" onclick="resolvePastedLocation()" style="white-space:nowrap;">Use this 📍</button>
+        <div class="more-options-panel" id="more-options-panel">
+          <div class="form-row-3" style="margin-bottom:16px;margin-top:12px;">
+            <div class="form-group">
+              <label class="form-label">Country</label>
+              <input type="text" id="country-input" placeholder="e.g. UAE, Saudi Arabia">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Zip / Postal Code <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional)</span></label>
+              <input type="text" id="zip-input" placeholder="e.g. 11564">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Street / Neighborhood <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(optional)</span></label>
+              <input type="text" id="street-input" placeholder="e.g. King Fahd Rd, SoHo">
+            </div>
           </div>
-          <div id="location-link-status" style="font-size:12px;color:var(--text-dim);margin-top:6px;"></div>
+
+          <!-- Paste a location: Google Maps link, Plus Code, or lat,lng -->
+          <div class="form-group" style="margin-bottom:16px;">
+            <label class="form-label">📍 Or paste a location <span style="color:var(--text-muted);font-weight:400;text-transform:none;">(Google Maps link, Plus Code, or lat,lng — the search starts there)</span></label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="location-link" autocomplete="off" placeholder="e.g. https://maps.app.goo.gl/…  ·  PQF5+HX3 Riyadh  ·  24.7239,46.7599" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();resolvePastedLocation();}">
+              <button class="btn btn-amber" type="button" onclick="resolvePastedLocation()" style="white-space:nowrap;">Use this 📍</button>
+            </div>
+            <div id="location-link-status" style="font-size:12px;color:var(--text-dim);margin-top:6px;"></div>
+          </div>
         </div>
 
         <!-- Map picker — keyless Google Maps embed (interactive: drag to move) -->
@@ -1297,30 +1681,37 @@
           </div>
         </div>
 
-        <div class="form-row-3" style="margin-bottom:16px;">
-          <div class="form-group">
-            <label class="form-label">Search Radius</label>
-            <select id="radius-select">
-              <option value="1" data-tier="free">1 km</option>
-              <option value="2" data-tier="free">2 km</option>
-              <option value="5" data-tier="free" selected>5 km</option>
-              <option value="10" data-tier="starter">10 km</option>
-              <option value="20" data-tier="starter">20 km</option>
-              <option value="50" data-tier="pro">50 km</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Result Count</label>
-            <select id="count-select">
-              <option value="3" data-tier="free">3 leads</option>
-              <option value="6" data-tier="free" selected>6 leads</option>
-              <option value="10" data-tier="starter">10 leads</option>
-              <option value="20" data-tier="starter">20 leads</option>
-              <option value="30" data-tier="pro">30 leads</option>
-              <option value="40" data-tier="pro">40 leads</option>
-              <option value="50" data-tier="pro">50 leads</option>
-            </select>
-          </div>
+        <!-- Radius/count are chip rows over a visually-hidden native <select> —
+             keeps every downstream .value / .options read (startSearch,
+             researchThisArea, applyTierGating) working unchanged. -->
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Search Radius</label>
+          <div class="chip-row" id="radius-chips"></div>
+          <select id="radius-select" class="select-visually-hidden" tabindex="-1" aria-hidden="true">
+            <option value="1" data-tier="free">1 km</option>
+            <option value="2" data-tier="free">2 km</option>
+            <option value="5" data-tier="free" selected>5 km</option>
+            <option value="10" data-tier="starter">10 km</option>
+            <option value="20" data-tier="starter">20 km</option>
+            <option value="50" data-tier="pro">50 km</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label">Result Count</label>
+          <div class="chip-row" id="count-chips"></div>
+          <select id="count-select" class="select-visually-hidden" tabindex="-1" aria-hidden="true">
+            <option value="3" data-tier="free">3 leads</option>
+            <option value="6" data-tier="free" selected>6 leads</option>
+            <option value="10" data-tier="starter">10 leads</option>
+            <option value="20" data-tier="starter">20 leads</option>
+            <option value="30" data-tier="pro">30 leads</option>
+            <option value="40" data-tier="pro">40 leads</option>
+            <option value="50" data-tier="pro">50 leads</option>
+          </select>
+        </div>
+
+        <div class="form-row" style="margin-bottom:16px;">
           <div class="form-group">
             <label class="form-label">Filter</label>
             <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;font-size:13px;">
@@ -1483,6 +1874,44 @@
       </div>
     </div>
 
+    <!-- ===== OWNER PORTAL (only visible when isOwner) ===== -->
+    <div class="page" id="page-owner">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Owner Dashboard<span class="owner-badge">Owner-only</span></div>
+          <div class="page-sub">Users, revenue, and inbound messages across the whole app</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="loadOwnerData()">↻ Refresh</button>
+      </div>
+
+      <div class="owner-stat-grid" id="owner-stats">
+        <div class="owner-stat-card"><div class="owner-stat-value">—</div><div class="owner-stat-label">Loading…</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Users</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Email</th><th>Tier</th><th>Status</th><th>Searches used</th><th>AI used</th><th>Joined</th></tr></thead>
+            <tbody id="owner-users-tbody"></tbody>
+          </table>
+        </div>
+        <div id="owner-users-empty" class="empty-state" style="display:none;">
+          <div class="empty-icon">👤</div>
+          <div class="empty-title">No users yet</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Contact messages</span></div>
+        <div id="owner-messages-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+        <div id="owner-messages-empty" class="empty-state" style="display:none;">
+          <div class="empty-icon">✉️</div>
+          <div class="empty-title">No messages yet</div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /app -->
 
@@ -1627,6 +2056,7 @@ function normalizeSearch(s) {
 //  NAVIGATION
 // ============================================================
 function navigateTo(page) {
+  if (!page) return; // the Help nav-item has no data-page — it opens the contact form instead
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`page-${page}`).classList.add('active');
@@ -1636,6 +2066,7 @@ function navigateTo(page) {
   if (page === 'all-leads') renderLeadsTable();
   if (page === 'history') renderHistory();
   if (page === 'analytics') renderAnalytics();
+  if (page === 'owner') loadOwnerData();
 }
 
 document.querySelectorAll('.nav-item').forEach(item => {
@@ -1865,8 +2296,16 @@ function researchThisArea(bumpRadius) {
     const sel = document.getElementById('radius-select');
     const cur = parseInt(sel.value) || 1;
     let best = null;
-    for (const o of sel.options) { const v = parseInt(o.value); if (v > cur && (best === null || v < best)) best = v; }
-    if (best !== null) { sel.value = String(best); showToast('info', '📏', `Radius increased to ${sel.options[sel.selectedIndex].text}.`); }
+    // Skip tier-locked options — bumping onto one here would just come back
+    // as a 400 from the server's own radius check instead of doing anything.
+    for (const o of sel.options) { if (o.disabled) continue; const v = parseInt(o.value); if (v > cur && (best === null || v < best)) best = v; }
+    if (best !== null) {
+      sel.value = String(best);
+      renderChipsFromSelect('radius-select', 'radius-chips');
+      showToast('info', '📏', `Radius increased to ${sel.options[sel.selectedIndex].text}.`);
+    } else {
+      showToast('info', 'ℹ️', "Already at your plan's max radius — upgrade for a wider search.");
+    }
   }
   startSearch({ isResearch: true });
 }
@@ -2842,6 +3281,69 @@ async function renderAnalytics() {
 }
 
 // ============================================================
+//  OWNER PORTAL — only reachable when /api/auth/me returned isOwner:true;
+//  the endpoints themselves are also server-side gated (requireOwner), so
+//  this is a convenience view, not the security boundary.
+// ============================================================
+async function loadOwnerData() {
+  const statsEl = document.getElementById('owner-stats');
+  try {
+    const [stats, users, messages] = await Promise.all([
+      apiFetch('/api/owner/stats').then(r => r.json()),
+      apiFetch('/api/owner/users').then(r => r.json()),
+      apiFetch('/api/owner/messages').then(r => r.json()),
+    ]);
+
+    const cards = [
+      { label: 'Real users', value: stats.totalUsers },
+      { label: 'Guest sessions', value: stats.totalGuests },
+      { label: 'MRR estimate', value: `$${stats.mrr.toFixed(2)}` },
+      { label: 'Starter subs', value: stats.activeByTier.starter },
+      { label: 'Pro subs', value: stats.activeByTier.pro },
+      { label: 'Total searches', value: stats.totalSearches },
+      { label: 'Total leads', value: stats.totalLeads },
+      { label: 'Messages', value: stats.totalMessages },
+    ];
+    statsEl.innerHTML = cards.map(c => `
+      <div class="owner-stat-card">
+        <div class="owner-stat-value">${c.value}</div>
+        <div class="owner-stat-label">${c.label}</div>
+      </div>
+    `).join('');
+
+    const tbody = document.getElementById('owner-users-tbody');
+    const usersEmpty = document.getElementById('owner-users-empty');
+    const realUsers = users.filter(u => !u.isGuest);
+    usersEmpty.style.display = realUsers.length ? 'none' : 'block';
+    tbody.innerHTML = realUsers.map(u => `
+      <tr>
+        <td>${escHtml(u.email)}</td>
+        <td style="text-transform:capitalize;">${escHtml(u.tier || 'free')}</td>
+        <td>${escHtml(u.status || '—')}</td>
+        <td>${u.searches_used_lifetime ?? 0}</td>
+        <td>${u.ai_searches_used ?? 0}</td>
+        <td>${u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+      </tr>
+    `).join('');
+
+    const msgList = document.getElementById('owner-messages-list');
+    const msgEmpty = document.getElementById('owner-messages-empty');
+    msgEmpty.style.display = messages.length ? 'none' : 'block';
+    msgList.innerHTML = messages.map(m => `
+      <div class="panel" style="padding:14px 16px;">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;color:var(--text-dim);margin-bottom:6px;">
+          <strong style="color:var(--text);">${escHtml(m.name || 'Anonymous')}</strong> &middot; ${escHtml(m.email || '')}
+          <span>${m.created_at ? new Date(m.created_at).toLocaleString() : ''}</span>
+        </div>
+        <div style="font-size:13px;color:var(--text);white-space:pre-wrap;">${escHtml(m.message || '')}</div>
+      </div>
+    `).join('');
+  } catch (e) {
+    statsEl.innerHTML = `<div class="text-dim" style="font-size:13px;">Could not load owner data: ${escHtml(e.message)}</div>`;
+  }
+}
+
+// ============================================================
 //  EXPORT
 // ============================================================
 function exportAll(format) {
@@ -3465,7 +3967,7 @@ document.addEventListener('keydown', e => {
 // 'claim' hits POST /api/auth/claim, which upgrades the CURRENT guest session
 // in place (same id, same search history) instead of creating a new account.
 let authMode = 'login';
-let authGateWasHardGate = false; // true only if opened because guest provisioning itself failed
+let authGateReturnTo = 'app'; // 'app' | 'landing' — where closeAuthGate() goes back to
 
 function setAuthMode(mode) {
   authMode = mode;
@@ -3479,25 +3981,67 @@ function setAuthMode(mode) {
   document.getElementById('auth-toggle-row').style.display = mode === 'claim' ? 'none' : 'block';
   document.getElementById('auth-toggle-text').textContent = mode === 'login' ? 'No account?' : 'Already have one?';
   document.getElementById('auth-toggle-link').textContent = mode === 'login' ? 'Sign up' : 'Log in';
+  document.getElementById('auth-guest-row').style.display = mode === 'claim' ? 'none' : 'block';
   document.getElementById('auth-error').style.display = 'none';
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-password').value = '';
+  document.getElementById('pw-strength').style.display = 'none';
+  document.getElementById('pw-strength-label').textContent = '';
 }
 
 function toggleAuthMode() {
   setAuthMode(authMode === 'login' ? 'signup' : 'login');
 }
 
-// Opened from the sidebar's guest links ("Save my leads" / "Log in") — a
-// guest session already exists, so this is optional and closable, not a wall.
-function openAuthGate(mode) {
-  authGateWasHardGate = false;
+// Purely a UX nudge (colored bar + label) — the server is the real enforcer
+// of the 8-character minimum regardless of what this shows.
+function updatePasswordStrength() {
+  const pw = document.getElementById('auth-password').value;
+  const wrap = document.getElementById('pw-strength');
+  const label = document.getElementById('pw-strength-label');
+  const segs = wrap.querySelectorAll('.pw-strength-seg');
+  if (!pw) { wrap.style.display = 'none'; label.textContent = ''; return; }
+  wrap.style.display = 'flex';
+
+  if (pw.length < 8) {
+    segs.forEach(s => s.style.background = 'var(--red)');
+    label.textContent = `Too short — ${8 - pw.length} more character${8 - pw.length === 1 ? '' : 's'} needed`;
+    label.style.color = 'var(--red)';
+    return;
+  }
+  let score = 1;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
+  const colors = ['var(--orange)', 'var(--yellow)', 'var(--green)', 'var(--green)'];
+  const labels = ['Weak', 'Okay', 'Good', 'Strong'];
+  const idx = Math.min(score - 1, 3);
+  segs.forEach((seg, i) => seg.style.background = i <= idx ? colors[idx] : 'var(--border)');
+  label.textContent = labels[idx];
+  label.style.color = colors[idx];
+}
+
+// Opened from the landing page (returnTo='landing') or from inside the app —
+// sidebar's guest links, owner re-login, etc. (returnTo='app', the default).
+// Always closable: whichever screen it was opened from is always a valid
+// place to fall back to, so there's no more "hard gate" special case.
+function openAuthGate(mode, returnTo) {
+  authGateReturnTo = returnTo || 'app';
   setAuthMode(mode);
-  document.getElementById('auth-gate-close').style.display = 'inline';
+  document.getElementById('screen-landing').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
   document.getElementById('auth-gate').style.display = 'block';
+  document.body.classList.add('screen-scroll');
 }
 
 function closeAuthGate() {
-  if (authGateWasHardGate) return; // no session to fall back to — must complete the form
   document.getElementById('auth-gate').style.display = 'none';
+  if (authGateReturnTo === 'landing') {
+    document.getElementById('screen-landing').style.display = 'block';
+  } else {
+    document.getElementById('app').style.display = '';
+    document.body.classList.remove('screen-scroll');
+  }
 }
 
 async function submitAuth() {
@@ -3524,43 +4068,79 @@ async function submitAuth() {
   }
 }
 
+// The auth screen's "continue as guest" escape hatch — identical silent
+// free-tier provisioning as the landing page's "Try free" button.
+async function continueAsGuestFromAuth() {
+  await landingTryFree();
+}
+
 async function logout() {
   await fetch('/api/auth/logout', { method: 'POST' });
   location.reload();
 }
 
-// No hard login wall: a first-time visitor silently gets a free-tier guest
-// account (POST /api/auth/guest) so "5 free searches, no signup" actually
-// works. Returning users (real accounts) just resume their session as normal.
+// ============================================================
+//  SCREEN ROUTER — landing (marketing) vs auth vs app
+// ============================================================
+// A brand-new visitor (no session at all) sees the landing page and is NOT
+// silently signed up — a guest account is only created the moment they act
+// (Try Free / continue as guest), so casual/bot traffic doesn't pile up rows
+// in the users table. Anyone with an existing session (guest or real) skips
+// straight to the app — returning users never see marketing again. Logging
+// out clears the session and returns here to the landing page.
 async function checkAuth() {
-  let res = await fetch('/api/auth/me');
-  let data = await res.json();
-
-  if (!data.user) {
-    res = await fetch('/api/auth/guest', { method: 'POST' });
-    data = await res.json();
-    if (!data.user) {
-      // Only reachable if the guest endpoint itself failed (e.g. DB down) —
-      // fall back to the manual login/signup screen rather than a blank app.
-      authGateWasHardGate = true;
-      setAuthMode('login');
-      document.getElementById('auth-gate-close').style.display = 'none';
-      document.getElementById('auth-gate').style.display = 'block';
-      document.getElementById('app').style.display = 'none';
-      return null;
-    }
+  try {
+    const res = await fetch('/api/auth/me');
+    const data = await res.json();
+    if (!data.user) { showLanding(); return null; }
+    enterApp(data.user, data.subscription);
+    return data.user;
+  } catch (e) {
+    showLanding(); // best effort — the landing CTA will surface a real error if the backend is down
+    return null;
   }
+}
 
+function showLanding() {
+  document.getElementById('auth-gate').style.display = 'none';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('screen-landing').style.display = 'block';
+  document.body.classList.add('screen-scroll');
+  renderLandingDemo();
+  renderLandingFaq();
+}
+
+function enterApp(user, subscription) {
+  document.getElementById('screen-landing').style.display = 'none';
   document.getElementById('auth-gate').style.display = 'none';
   document.getElementById('app').style.display = '';
-  renderUserInfo(data.user, data.subscription);
+  document.body.classList.remove('screen-scroll');
+  renderUserInfo(user, subscription);
 
-  const tier = (data.subscription && data.subscription.tier) || 'free';
-  state.currentUser = { ...data.user, tier, subscription: data.subscription };
-  applyTierGating(tier, data.subscription); // grey out (not hide) options above this tier
+  const tier = (subscription && subscription.tier) || 'free';
+  state.currentUser = { ...user, tier, subscription };
+  applyTierGating(tier, subscription); // grey out (not hide) options above this tier
   updateUsageBar();
+  applyOwnerUI(!!user.isOwner);
+}
 
-  return data.user;
+// "Try free" on the landing page, or "continue as guest" from the auth
+// screen — both silently provision a free-tier account, no email/password.
+async function landingTryFree() {
+  try {
+    const res = await fetch('/api/auth/guest', { method: 'POST' });
+    const data = await res.json();
+    if (!data.user) { showToast('error', '❌', 'Could not start a session — try again.'); return; }
+    enterApp(data.user, data.subscription);
+    init();
+  } catch (e) {
+    showToast('error', '❌', 'Network error — try again.');
+  }
+}
+
+function applyOwnerUI(isOwner) {
+  const navOwner = document.getElementById('nav-owner');
+  if (navOwner) navOwner.style.display = isOwner ? '' : 'none';
 }
 
 // Guests see "Guest session" + Save/Log in links instead of an email, since
@@ -3569,17 +4149,66 @@ function renderUserInfo(user, subscription) {
   const userInfo = document.getElementById('user-info');
   userInfo.style.display = 'block';
   const tier = (subscription && subscription.tier) || 'free';
-  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1) + ' plan';
+  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1) + ' plan' + (user.isOwner ? ' · Owner' : '');
 
   if (user.isGuest) {
     document.getElementById('user-email').textContent = 'Guest session';
     document.getElementById('user-tier').innerHTML =
-      `${tierLabel} · <a href="#" onclick="openAuthGate('claim');return false;">Save my leads</a> · <a href="#" onclick="openAuthGate('login');return false;">Log in</a>`;
+      `${tierLabel} · <a href="#" onclick="openAuthGate('claim','app');return false;">Save my leads</a> · <a href="#" onclick="openAuthGate('login','app');return false;">Log in</a>`;
   } else {
     document.getElementById('user-email').textContent = user.email;
     document.getElementById('user-tier').innerHTML =
       `${tierLabel} · <a href="#" onclick="openUpgrade();return false;">Upgrade</a> · <a href="#" onclick="logout();return false;">Log out</a>`;
   }
+}
+
+// ─── Landing page content: fake live-search demo + FAQ accordion ───────────
+const LANDING_DEMO_LEADS = [
+  { icon: '🍕', name: "Tony's Pizzeria", tag: 'No website found', score: 9 },
+  { icon: '💇', name: 'Glow Hair Studio', tag: 'Instagram only', score: 8 },
+  { icon: '🔧', name: 'QuickFix Auto', tag: 'No website found', score: 7 },
+];
+
+function renderLandingDemo() {
+  const el = document.getElementById('landing-demo-body');
+  if (!el) return;
+  el.innerHTML = `<div class="landing-demo-query">Searching <b>"Restaurants"</b> near <b>Austin, TX</b> — 5km radius…</div>` +
+    LANDING_DEMO_LEADS.map((l, i) => `
+      <div class="landing-demo-card" style="animation-delay:${(0.3 + i * 0.35).toFixed(2)}s;">
+        <span class="biz-icon">${l.icon}</span>
+        <span class="biz-name">${escHtml(l.name)}</span>
+        <span class="biz-tag">${escHtml(l.tag)}</span>
+        <span class="biz-score">${l.score}/10</span>
+      </div>
+    `).join('');
+}
+
+const LANDING_FAQS = [
+  { q: 'Do I need to sign up to try it?', a: 'No — click "Try free" and you get 5 searches instantly as a guest, no email or card required. Add an email later only if you want to save your leads permanently.' },
+  { q: 'What counts as one search?', a: 'One category + location + radius combination. You can re-run "Research this area" on the same search a limited number of times (more on higher plans) to dig deeper without spending a new search.' },
+  { q: 'What is AI deep search?', a: 'Instead of a single lookup, an AI agent visits each business\'s website and socials like a human would, filling in emails and context a normal search misses. Available on Starter and Pro.' },
+  { q: 'Can I cancel anytime?', a: 'Yes. Subscriptions are billed monthly via PayPal and can be cancelled anytime — no lock-in contracts.' },
+  { q: 'What happens to my guest data if I sign up later?', a: '"Save my leads" upgrades your current guest session into a real login in place — same searches, same history, same account. Nothing is lost.' },
+];
+
+function renderLandingFaq() {
+  const el = document.getElementById('landing-faq');
+  if (!el || el.dataset.rendered) return; // static content — only needs to render once
+  el.dataset.rendered = '1';
+  el.innerHTML = LANDING_FAQS.map((f, i) => `
+    <div class="faq-item" id="faq-${i}">
+      <div class="faq-q" onclick="toggleFaq(${i})">
+        <span>${escHtml(f.q)}</span>
+        <span class="faq-arrow">▾</span>
+      </div>
+      <div class="faq-a">${escHtml(f.a)}</div>
+    </div>
+  `).join('');
+}
+
+function toggleFaq(i) {
+  const item = document.getElementById(`faq-${i}`);
+  if (item) item.classList.toggle('open');
 }
 
 // Every <option> in radius-select / count-select carries data-tier="free|starter|pro".
@@ -3609,9 +4238,49 @@ function gateSelectOptions(selectEl, tier) {
   }
 }
 
+// Renders a chip-row visual layer over a native <select>'s current options —
+// clicking an unlocked chip sets select.value; clicking a locked one nudges
+// toward upgrading instead. Kept in sync by re-calling this after every
+// gateSelectOptions() pass, so the select stays the single source of truth.
+function renderChipsFromSelect(selectId, chipContainerId) {
+  const select = document.getElementById(selectId);
+  const container = document.getElementById(chipContainerId);
+  if (!select || !container) return;
+
+  container.innerHTML = '';
+  Array.from(select.options).forEach(opt => {
+    const locked = opt.disabled;
+    const tierMatch = opt.textContent.match(/—\s*(Starter|Pro)$/);
+    const label = opt.textContent.replace(/\s*—\s*(Starter|Pro)$/, '');
+    const chip = document.createElement('div');
+    chip.className = 'chip-opt' + (opt.value === select.value ? ' selected' : '') + (locked ? ' locked' : '');
+    chip.innerHTML = escHtml(label) + (locked && tierMatch ? ` <span class="lock-tag">🔒 ${tierMatch[1]}</span>` : '');
+    chip.onclick = () => {
+      if (locked) {
+        showToast('info', '🔒', `${label} requires the ${tierMatch ? tierMatch[1] : 'a higher'} plan.`);
+        openUpgrade();
+        return;
+      }
+      select.value = opt.value;
+      renderChipsFromSelect(selectId, chipContainerId); // re-render to move the highlight
+    };
+    container.appendChild(chip);
+  });
+}
+
+// Collapsed by default so a first-time visitor sees one clean location box
+// instead of six inputs — autocomplete/GPS can still silently fill the
+// fields inside while it's collapsed.
+function toggleMoreOptions() {
+  document.getElementById('more-options-toggle').classList.toggle('open');
+  document.getElementById('more-options-panel').classList.toggle('open');
+}
+
 function applyTierGating(tier, subscription) {
   gateSelectOptions(document.getElementById('radius-select'), tier);
   gateSelectOptions(document.getElementById('count-select'), tier);
+  renderChipsFromSelect('radius-select', 'radius-chips');
+  renderChipsFromSelect('count-select', 'count-chips');
 
   // AI deep search: greyed out entirely on Free, shows remaining uses on Starter/Pro
   const AI_CAPS = { free: 0, starter: 5, pro: 20 };
