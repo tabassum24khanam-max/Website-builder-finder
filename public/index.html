@@ -891,6 +891,28 @@
     </div>
   </div>
 </div>
+<!-- Minimal upgrade panel — placeholder until the real pricing UI ships. -->
+<div id="upgrade-panel" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);overflow-y:auto;" onclick="if(event.target===this)closeUpgrade();">
+  <div class="panel" style="max-width:460px;margin:10vh auto 0;">
+    <div class="panel-header">
+      <span class="panel-title">Upgrade Plan</span>
+      <a href="#" onclick="closeUpgrade();return false;" style="color:var(--text-dim);">✕</a>
+    </div>
+    <div style="padding:20px;">
+      <div id="upgrade-msg" style="font-size:13px;color:var(--text-dim);margin-bottom:16px;display:none;"></div>
+      <div style="margin-bottom:20px;">
+        <div style="font-weight:600;margin-bottom:4px;">Starter — $9/mo</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">60 searches/month</div>
+        <div id="paypal-btn-starter"></div>
+      </div>
+      <div>
+        <div style="font-weight:600;margin-bottom:4px;">Pro — $19.99/mo</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">150 searches/month + AI deep search</div>
+        <div id="paypal-btn-pro"></div>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="app" style="display:none;">
   <!-- SIDEBAR -->
   <nav id="sidebar">
@@ -923,7 +945,7 @@
       </div>
       <div id="user-info" style="margin-top:10px;font-size:12px;color:var(--text-dim);display:none;">
         <div id="user-email" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
-        <div><span id="user-tier"></span> · <a href="#" onclick="logout();return false;">Log out</a></div>
+        <div><span id="user-tier"></span> · <a href="#" onclick="openUpgrade();return false;">Upgrade</a> · <a href="#" onclick="logout();return false;">Log out</a></div>
       </div>
     </div>
   </nav>
@@ -3188,6 +3210,83 @@ async function checkAuth() {
   const tier = (data.subscription && data.subscription.tier) || 'free';
   document.getElementById('user-tier').textContent = tier.charAt(0).toUpperCase() + tier.slice(1) + ' plan';
   return data.user;
+}
+
+// ============================================================
+//  UPGRADE PANEL — placeholder until the real pricing UI ships
+// ============================================================
+let paypalSdkPromise = null;
+function loadPaypalSdk(clientId) {
+  if (!paypalSdkPromise) {
+    paypalSdkPromise = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&vault=true&intent=subscription`;
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+  return paypalSdkPromise;
+}
+
+function closeUpgrade() {
+  document.getElementById('upgrade-panel').style.display = 'none';
+}
+
+async function openUpgrade() {
+  document.getElementById('upgrade-panel').style.display = 'block';
+  const msgEl = document.getElementById('upgrade-msg');
+  msgEl.style.display = 'none';
+
+  const cfg = await fetch('/api/config').then(r => r.json());
+  if (!cfg.paypalClientId || !cfg.paypalPlans || !cfg.paypalPlans.starter) {
+    msgEl.textContent = "Payments aren't set up yet.";
+    msgEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    await loadPaypalSdk(cfg.paypalClientId);
+  } catch {
+    msgEl.textContent = 'Could not load PayPal — check your connection and try again.';
+    msgEl.style.display = 'block';
+    return;
+  }
+
+  renderPaypalButton('paypal-btn-starter', cfg.paypalPlans.starter);
+  renderPaypalButton('paypal-btn-pro', cfg.paypalPlans.pro);
+}
+
+function renderPaypalButton(containerId, planId) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = ''; // avoid stacking duplicate buttons if the panel is reopened
+  paypal.Buttons({
+    createSubscription: (data, actions) => actions.subscription.create({ plan_id: planId }),
+    onApprove: async (data) => {
+      const msgEl = document.getElementById('upgrade-msg');
+      msgEl.textContent = 'Confirming…';
+      msgEl.style.display = 'block';
+      try {
+        const res = await fetch('/api/billing/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscriptionId: data.subscriptionID }),
+        });
+        const body = await res.json();
+        if (!res.ok) { msgEl.textContent = body.error || 'Could not confirm the subscription.'; return; }
+        msgEl.textContent = `You're on the ${body.tier} plan now.`;
+        await checkAuth(); // refresh the sidebar tier label
+        setTimeout(closeUpgrade, 1500);
+      } catch (e) {
+        msgEl.textContent = 'Network error confirming the subscription.';
+      }
+    },
+    onError: () => {
+      const msgEl = document.getElementById('upgrade-msg');
+      msgEl.textContent = 'PayPal encountered an error — try again.';
+      msgEl.style.display = 'block';
+    },
+  }).render('#' + containerId);
 }
 
 // ============================================================

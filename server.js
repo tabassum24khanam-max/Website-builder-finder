@@ -68,7 +68,16 @@ function broadcast(data) {
 // ─── Client config (Google Maps browser key — referrer-restricted, safe to expose) ──
 
 app.get('/api/config', (req, res) => {
-  res.json({ googleMapsKey: process.env.GOOGLE_MAPS_API_KEY || '' });
+  res.json({
+    googleMapsKey: process.env.GOOGLE_MAPS_API_KEY || '',
+    // PayPal's Client ID is meant to be public — it's how their JS SDK
+    // identifies which account to bill into, not a credential on its own.
+    paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
+    paypalPlans: {
+      starter: process.env.PAYPAL_PLAN_ID_STARTER || '',
+      pro: process.env.PAYPAL_PLAN_ID_PRO || '',
+    },
+  });
 });
 
 // Deploy healthcheck (railway.toml). Must stay PUBLIC — it used to point at
