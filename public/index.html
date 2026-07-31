@@ -1064,6 +1064,33 @@
     </div>
   </div>
 </div>
+
+<!-- Contact Form Modal -->
+<div id="contact-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);overflow-y:auto;padding:40px 20px;" onclick="if(event.target===this)closeContactForm();">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;max-width:500px;margin:10vh auto 0;padding:28px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h2 style="font-size:20px;font-weight:700;color:var(--text);">How can we help?</h2>
+      <a href="#" onclick="closeContactForm();return false;" style="font-size:24px;color:var(--text-dim);cursor:pointer;text-decoration:none;">✕</a>
+    </div>
+    <div id="contact-msg" style="font-size:13px;color:var(--text-dim);margin-bottom:16px;display:none;padding:12px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:6px;"></div>
+    <form id="contact-form" onsubmit="submitContactForm(event);">
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px;">Email</label>
+        <input type="email" name="email" placeholder="your@email.com" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;" required>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px;">Name (optional)</label>
+        <input type="text" name="name" placeholder="Your name" style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;">
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px;">Message</label>
+        <textarea name="message" placeholder="Tell us what you need..." style="width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;resize:vertical;min-height:100px;" required></textarea>
+      </div>
+      <button type="submit" style="width:100%;padding:10px 16px;background:var(--amber);color:#000;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-family:inherit;">Send Message</button>
+    </form>
+  </div>
+</div>
+
 <div id="app" style="display:none;">
   <!-- SIDEBAR -->
   <nav id="sidebar">
@@ -1087,6 +1114,10 @@
       <div class="nav-item" data-page="analytics">
         <span class="nav-icon">📊</span>
         <span class="nav-label">Analytics</span>
+      </div>
+      <div class="nav-item" onclick="openContactForm();return false;" style="cursor:pointer;">
+        <span class="nav-icon">❓</span>
+        <span class="nav-label">Help</span>
       </div>
     </div>
     <div class="sidebar-bottom">
@@ -3360,7 +3391,37 @@ async function checkAuth() {
   document.getElementById('user-email').textContent = data.user.email;
   const tier = (data.subscription && data.subscription.tier) || 'free';
   document.getElementById('user-tier').textContent = tier.charAt(0).toUpperCase() + tier.slice(1) + ' plan';
+
+  // Update radius options based on tier limits
+  updateRadiusOptions(tier);
+
   return data.user;
+}
+
+function updateRadiusOptions(tier) {
+  const radiusSelect = document.getElementById('radius-select');
+  if (!radiusSelect) return;
+
+  // Define radius limits per tier
+  const tierLimits = {
+    free: [1, 2, 5],
+    starter: [1, 2, 5, 10, 20],
+    pro: [1, 2, 5, 10, 20, 50],
+  };
+
+  const allowedOptions = tierLimits[tier] || tierLimits.free;
+  const allOptions = radiusSelect.querySelectorAll('option');
+  const currentValue = radiusSelect.value;
+
+  allOptions.forEach(opt => {
+    const val = parseInt(opt.value);
+    opt.style.display = allowedOptions.includes(val) ? '' : 'none';
+  });
+
+  // Reset to first available option if current is disabled
+  if (!allowedOptions.includes(parseInt(currentValue))) {
+    radiusSelect.value = allowedOptions[0];
+  }
 }
 
 // ============================================================
@@ -3438,6 +3499,51 @@ function renderPaypalButton(containerId, planId) {
       msgEl.style.display = 'block';
     },
   }).render('#' + containerId);
+}
+
+// ─── Contact Form ────────────────────────────────────────────────────────────
+function openContactForm() {
+  document.getElementById('contact-modal').style.display = 'block';
+  document.getElementById('contact-msg').style.display = 'none';
+  document.getElementById('contact-form').reset();
+}
+
+function closeContactForm() {
+  document.getElementById('contact-modal').style.display = 'none';
+}
+
+async function submitContactForm(e) {
+  e.preventDefault();
+  const form = e.target;
+  const email = form.email.value.trim();
+  const name = form.name.value.trim();
+  const message = form.message.value.trim();
+
+  if (!email || !message) {
+    alert('Please fill in all required fields.');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name, message }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || 'Failed to send message.');
+
+    document.getElementById('contact-msg').textContent = '✅ Message sent! We\'ll get back to you soon.';
+    document.getElementById('contact-msg').style.display = 'block';
+    document.getElementById('contact-msg').style.borderColor = 'rgba(34,197,94,0.4)';
+    form.reset();
+    setTimeout(closeContactForm, 2000);
+  } catch (e) {
+    document.getElementById('contact-msg').textContent = '❌ ' + e.message;
+    document.getElementById('contact-msg').style.display = 'block';
+    document.getElementById('contact-msg').style.borderColor = 'rgba(239,68,68,0.4)';
+    document.getElementById('contact-msg').style.color = 'var(--red)';
+  }
 }
 
 // ============================================================

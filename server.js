@@ -14,8 +14,9 @@ const { getTier } = require('./db/tiers');
 const SqliteSessionStore = require('./db/session-store');
 const authRouter = require('./routes/auth');
 const billingRouter = require('./routes/billing');
-const { requireAuth } = require('./middleware/auth');
+const { requireAuth, optionalAuth } = require('./middleware/auth');
 const { runSearch, stopSearch } = require('./agent');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const server = createServer(app);
@@ -125,6 +126,19 @@ app.delete('/api/searches/:id', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// Check if user is the owner (unlimited everything)
+function isOwner(user) {
+  return user && user.email === process.env.OWNER_EMAIL;
+}
+
+// Reset monthly AI usage if billing period has ended
+function resetAIUsageIfNeeded(sub, tier) {
+  if (tier.monthlySearches != null && sub.period_end && new Date(sub.period_end) < new Date()) {
+    q.resetAIUsage.run(sub.user_id);
+    sub.ai_searches_used = 0;
+  }
+}
+
 // Checks the caller's plan before a search starts, and resets the monthly
 // counter if the current billing period has ended. Free tier has no period —
 // its cap is lifetime, not monthly.
@@ -143,7 +157,16 @@ function checkQuota(user) {
   return { tier, used, cap, ok: cap == null || used < cap };
 }
 
-app.post('/api/searches', requireAuth, (req, res) => {
+// Validate radius against tier limits
+function validateRadius(radiusKm, tier) {
+  const radius = parseInt(radiusKm);
+  if (!tier.radiusOptions.includes(radius) || radius > tier.maxRadiusKm) {
+    return { ok: false, error: `Max radius for your plan is ${tier.maxRadiusKm}km. Available: ${tier.radiusOptions.join(', ')}km.` };
+  }
+  return { ok: true };
+}
+
+app.post('/api/searches', optionalAuth, (req, res) => {
   const {
     category, location, country = '',
     radius_km, radius, limit_count, count,
@@ -155,14 +178,41 @@ app.post('/api/searches', requireAuth, (req, res) => {
   const effectiveCount = parseInt(limit_count || count) || 20;
 
   const quota = checkQuota(req.user);
-  if (!quota.ok) {
+  const isOwnerUser = isOwner(req.user);
+
+  // Owner bypass
+  if (!isOwnerUser && !quota.ok) {
     return res.status(402).json({
       error: `You've used all ${quota.cap} searches on the ${quota.tier.label} plan.`,
       tier: quota.tier.label, used: quota.used, cap: quota.cap,
     });
   }
-  // Never trust the client's ai_mode flag — only what the plan actually allows.
-  const aiModeAllowed = !!ai_mode && quota.tier.aiMode;
+
+  // Validate radius against tier limits (owner bypass)
+  if (!isOwnerUser) {
+    const radiusCheck = validateRadius(effectiveRadius, quota.tier);
+    if (!radiusCheck.ok) {
+      return res.status(400).json({ error: radiusCheck.error });
+    }
+  }
+
+  // Check AI mode usage cap (owner bypass)
+  const sub = q.getSubscriptionByUserId.get(req.user.id);
+  let aiModeAllowed = false;
+  if (ai_mode) {
+    if (isOwnerUser) {
+      aiModeAllowed = true;
+    } else {
+      resetAIUsageIfNeeded(sub, quota.tier);
+      const aiCap = quota.tier.aiSearchesPerMonth || 0;
+      if (aiCap > 0 && sub.ai_searches_used < aiCap) {
+        aiModeAllowed = true;
+        q.incrementAIUsage.run(req.user.id);
+      } else if (aiCap === 0) {
+        return res.status(402).json({ error: 'AI deep search is not available on your plan. Upgrade to access it.' });
+      }
+    }
+  }
 
   // Keep the structured location parts separate — the agent geocodes the most
   // specific combination (neighborhood/zip/city) for a precise center and a hard
@@ -177,6 +227,9 @@ app.post('/api/searches', requireAuth, (req, res) => {
   // No key required: without SERPER_API_KEY (or with a dead one) discovery
   // falls back to OpenStreetMap and enrichment to the free DDG/Bing search.
 
+  // Detect if this is a "research" re-run (excludeNames provided means re-search with exclusions)
+  const isResearch = Array.isArray(exclude_names) && exclude_names.length > 0;
+
   const searchId = uuid();
   q.insertSearch.run({
     id: searchId, category, location: cleanLocation, country,
@@ -185,6 +238,18 @@ app.post('/api/searches', requireAuth, (req, res) => {
   });
   q.incrementSearchUsage.run(req.user.id);
   const search = q.getSearch.get(searchId);
+
+  // Track research round if this is a re-run (owner bypass)
+  if (isResearch && !isOwnerUser) {
+    q.incrementResearchRounds.run(searchId);
+    const rcheck = q.getSearch.get(searchId);
+    if (rcheck.research_rounds_used > quota.tier.researchRoundsPerSearch) {
+      q.deleteSearch.run(searchId);
+      return res.status(402).json({
+        error: `You've reached the research limit (${quota.tier.researchRoundsPerSearch} per search) on the ${quota.tier.label} plan.`,
+      });
+    }
+  }
 
   // Attach extra fields the agent needs but aren't in the DB schema
   search.lat = parseFloat(lat) || null;
@@ -380,6 +445,57 @@ app.get('/api/export/:searchId/pdf', requireAuth, async (req, res) => {
   }
 
   doc.end();
+});
+
+// ─── Contact Form & Email ────────────────────────────────────────────────────
+
+// Set up Nodemailer for contact form emails
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'azk40772@gmail.com',
+    pass: process.env.GMAIL_APP_PASSWORD || '',
+  },
+});
+
+app.post('/api/contact', (req, res) => {
+  const { email, name, message } = req.body;
+
+  if (!email || !message) {
+    return res.status(400).json({ error: 'Email and message are required.' });
+  }
+
+  const contactId = uuid();
+  const cleanEmail = String(email).trim().toLowerCase();
+  const cleanName = String(name || 'Anonymous').trim().slice(0, 100);
+  const cleanMessage = String(message).trim().slice(0, 5000);
+
+  try {
+    q.insertContact.run({
+      id: contactId,
+      email: cleanEmail,
+      name: cleanName,
+      message: cleanMessage,
+    });
+
+    // Try to send email, but don't fail the response if it fails — we have a DB backup
+    if (process.env.GMAIL_APP_PASSWORD) {
+      transporter.sendMail({
+        from: 'azk40772@gmail.com',
+        to: 'azk40772@gmail.com',
+        subject: `LeadHunter Help: ${cleanName}`,
+        text: `From: ${cleanEmail}\n\n${cleanMessage}`,
+        html: `<p><strong>From:</strong> ${cleanEmail}</p><p><strong>Name:</strong> ${cleanName}</p><p>${cleanMessage.replace(/\n/g, '<br>')}</p>`,
+      }, (err) => {
+        if (err) console.error('Email send failed:', err.message);
+        else q.updateContactSent.run({ id: contactId });
+      });
+    }
+
+    res.json({ success: true, message: 'We\'ll get back to you soon!' });
+  } catch (e) {
+    res.status(500).json({ error: 'Could not save your message. Please try again.' });
+  }
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────

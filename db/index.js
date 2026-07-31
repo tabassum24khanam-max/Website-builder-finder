@@ -17,6 +17,10 @@ try { db.exec('ALTER TABLE leads ADD COLUMN owner_phone TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN tiktok_handle TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN tiktok_url TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE searches ADD COLUMN user_id TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE subscriptions ADD COLUMN ai_searches_used INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE searches ADD COLUMN research_rounds_used INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE searches ADD COLUMN ai_mode_used BOOLEAN DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN is_owner BOOLEAN DEFAULT 0'); } catch (_) {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -100,10 +104,20 @@ db.exec(`
     updated_at               DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS contacts (
+    id          TEXT PRIMARY KEY,
+    email       TEXT,
+    name        TEXT,
+    message     TEXT,
+    sent_at     BOOLEAN DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE INDEX IF NOT EXISTS idx_leads_search ON leads(search_id);
   CREATE INDEX IF NOT EXISTS idx_leads_score  ON leads(ai_score DESC);
   CREATE INDEX IF NOT EXISTS idx_searches_user ON searches(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
+  CREATE INDEX IF NOT EXISTS idx_contacts_created ON contacts(created_at DESC);
 `);
 
 const q = {
@@ -198,6 +212,30 @@ const q = {
       SUM(CASE WHEN leads.status = 'converted' THEN 1 ELSE 0 END) as converted
     FROM leads JOIN searches ON leads.search_id = searches.id
     WHERE searches.user_id = ?
+  `),
+
+  insertContact: db.prepare(`
+    INSERT INTO contacts (id, email, name, message)
+    VALUES (@id, @email, @name, @message)
+  `),
+  updateContactSent: db.prepare(`
+    UPDATE contacts SET sent_at = 1 WHERE id = @id
+  `),
+  listContacts: db.prepare('SELECT * FROM contacts ORDER BY created_at DESC'),
+  getContactsByEmail: db.prepare('SELECT * FROM contacts WHERE email = ? ORDER BY created_at DESC'),
+
+  incrementAIUsage: db.prepare(`
+    UPDATE subscriptions
+    SET ai_searches_used = ai_searches_used + 1, updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = ?
+  `),
+  resetAIUsage: db.prepare(`
+    UPDATE subscriptions
+    SET ai_searches_used = 0, updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = ?
+  `),
+  incrementResearchRounds: db.prepare(`
+    UPDATE searches SET research_rounds_used = research_rounds_used + 1 WHERE id = ?
   `),
 };
 
