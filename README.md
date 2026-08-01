@@ -1,5 +1,10 @@
 # LeadHunter — Find Local Businesses That Need a Website
 
+> **New to this project, or picking it back up with a different AI assistant?**
+> Read **[HANDOFF.md](./HANDOFF.md)** first — it covers accounts/tiers/billing,
+> deployment, environment variables, and what's left to do. This README covers
+> the search/discovery feature set specifically.
+
 A web app you open in your browser. Pick a business category, give it a locality
 (a city, a neighborhood, a zip, a pasted Google-Maps link or Plus Code, or a pin
 on the map), click **Start Search**, and it finds the real, independent local
