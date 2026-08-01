@@ -962,8 +962,22 @@
   .modal-split-body .modal-body { flex: 1; overflow-y: auto; min-width: 0; }
   .modal-map-side { width: 380px; min-width: 380px; border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
   @media (max-width: 900px) {
-    .modal-split-body { flex-direction: column; }
-    .modal-map-side { width: 100%; min-width: 0; height: 240px; min-height: 240px; border-left: none; border-top: 1px solid var(--border); }
+    /* Desktop deliberately keeps the map as a fixed side panel next to
+       independently-scrolling text (like a normal split view) — that's fine
+       there. Stacked on mobile, the SAME "text scrolls in its own box, map
+       sits in a separate fixed box beside/below it" behavior instead reads
+       as broken: the map never appears to move because it genuinely isn't
+       part of the scroll at all, it's a permanently-visible sibling box.
+       Making modal-split-body itself the one scrollable region — instead of
+       modal-body scrolling internally — means scrolling moves the map and
+       the text together, like one normal page, matching what "make the map
+       a section" / "make it scrollable" actually meant. */
+    .modal-split-body { flex-direction: column; overflow-y: auto; }
+    .modal-split-body .modal-body { flex: none; overflow-y: visible; }
+    .modal-map-side {
+      width: 100%; min-width: 0; height: 240px; min-height: 240px; flex: none;
+      border-left: none; border-top: 1px solid var(--border);
+    }
   }
 
   /* Pricing modal responsive */
