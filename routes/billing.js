@@ -16,26 +16,59 @@ function planTierById() {
 // re-check with PayPal directly rather than trusting the client — this only
 // gives instant UI feedback; the webhook below is the actual source of truth
 // for the subscription's status going forward (renewals, cancellations).
+//
+// SECURITY: subscriptionId comes from the client, so it must never be trusted
+// as proof of ownership on its own — anyone could POST any ACTIVE
+// subscriptionId (their own from a previous account, one glimpsed in
+// devtools/a screenshot/a proxy log, etc.) and, without the check below,
+// silently attach someone else's real payment to their own account, or let
+// N free accounts all claim the same paid subscription. The frontend sets
+// custom_id to the caller's own user id at subscription-CREATE time (see
+// renderPaypalButton in public/index.html) specifically so this endpoint has
+// something from PayPal itself — not the request body — to check ownership
+// against. The UNIQUE index on subscriptions.paypal_subscription_id
+// (db/index.js) is the second, structural layer of the same defense.
 router.post('/confirm', requireAuth, async (req, res) => {
   const subscriptionId = String(req.body.subscriptionId || '');
   if (!subscriptionId) return res.status(400).json({ error: 'subscriptionId required' });
 
+  let sub;
   try {
-    const sub = await paypal.getSubscription(subscriptionId);
-    const tier = planTierById()[sub.plan_id];
-    if (!tier) return res.status(400).json({ error: 'Unrecognized plan ID.' });
-    if (sub.status !== 'ACTIVE') return res.status(400).json({ error: `Subscription is ${sub.status}, not active yet.` });
+    sub = await paypal.getSubscription(subscriptionId);
+  } catch (e) {
+    return res.status(502).json({ error: 'Could not verify the subscription with PayPal: ' + e.message });
+  }
 
+  if (sub.custom_id !== req.user.id) {
+    return res.status(403).json({ error: 'This subscription does not belong to your account.' });
+  }
+
+  const tier = planTierById()[sub.plan_id];
+  if (!tier) return res.status(400).json({ error: 'Unrecognized plan ID.' });
+  if (sub.status !== 'ACTIVE') return res.status(400).json({ error: `Subscription is ${sub.status}, not active yet.` });
+
+  try {
     q.updateSubscriptionTier.run({
       user_id: req.user.id, tier, status: 'active',
       paypal_subscription_id: subscriptionId,
       period_start: new Date().toISOString(),
       period_end: (sub.billing_info && sub.billing_info.next_billing_time) || null,
     });
-    res.json({ success: true, tier });
+    // Same reasoning as the ACTIVATED webhook case: a user who previously
+    // cancelled and is re-subscribing on the same account must not start
+    // their new subscription already sitting at their old AI usage cap.
+    q.resetAIUsage.run(req.user.id);
   } catch (e) {
-    res.status(502).json({ error: 'Could not verify the subscription with PayPal: ' + e.message });
+    // Should be unreachable given the custom_id check above — kept as a clean
+    // error instead of a 500 in case a race or a future bug still hits the
+    // UNIQUE constraint, rather than crashing or leaking a raw SQLite error.
+    if (String(e.message).includes('UNIQUE')) {
+      return res.status(409).json({ error: 'This subscription is already linked to a different account.' });
+    }
+    return res.status(500).json({ error: 'Could not save the subscription.' });
   }
+
+  res.json({ success: true, tier });
 });
 
 // Self-service cancel from the pricing modal. Downgrades to Free immediately
@@ -85,6 +118,12 @@ router.post('/webhook', async (req, res) => {
           period_start: new Date().toISOString(),
           period_end: (resource.billing_info && resource.billing_info.next_billing_time) || null,
         });
+        // A fresh row already starts at 0, but if this user previously
+        // cancelled and is now re-subscribing on the SAME account row, their
+        // old ai_searches_used would otherwise carry over — someone who used
+        // up their AI quota, cancelled, and paid again could start their
+        // brand-new subscription already stuck at cap.
+        q.resetAIUsage.run(row.user_id);
         break;
       case 'BILLING.SUBSCRIPTION.CANCELLED':
       case 'BILLING.SUBSCRIPTION.EXPIRED':
@@ -95,12 +134,19 @@ router.post('/webhook', async (req, res) => {
         });
         break;
       case 'PAYMENT.SALE.COMPLETED':
-        // Renewal payment cleared — start a fresh monthly counter.
+        // Renewal payment cleared — start a fresh monthly counter. Must reset
+        // ai_searches_used here too: once period_end is advanced to a real
+        // future date (below), the lazy fallback in server.js's
+        // resetAIUsageIfNeeded() will never fire for the whole new period
+        // (it only resets when period_end has already PASSED) — without this,
+        // a customer who used their full AI quota once would never get it
+        // back on any future renewal despite paying every month.
         q.resetSearchUsage.run({
           user_id: row.user_id,
           period_start: new Date().toISOString(),
           period_end: (resource.billing_info && resource.billing_info.next_billing_time) || null,
         });
+        q.resetAIUsage.run(row.user_id);
         break;
     }
   }

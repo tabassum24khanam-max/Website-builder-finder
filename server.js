@@ -22,6 +22,26 @@ const { requireAuth, optionalAuth, isOwnerEmail } = require('./middleware/auth')
 const { runSearch, stopSearch } = require('./agent');
 const nodemailer = require('nodemailer');
 
+// Safety net: this app has Express 4 route handlers doing `async (req, res) =>
+// {...}` with no try/catch in several places, and Express 4 does not forward
+// a rejected handler promise anywhere — by default Node treats that as an
+// unhandled rejection and crashes the ENTIRE process (every connected user,
+// every in-flight search), not just the one bad request. Specific instances
+// found so far are fixed at the source (see routes/auth.js), but this is a
+// deliberate backstop for anything not yet found: an unhandled rejection
+// almost always means one request failed in isolation, so log it and keep
+// serving everyone else. An uncaughtException is different — Node's own docs
+// say the process may be in a corrupted state afterward — so that one still
+// exits (Railway's restartPolicyType=on_failure brings it back up cleanly)
+// rather than limping on unpredictably.
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️  Unhandled promise rejection (server stayed up; one request likely failed):', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('🔥 Uncaught exception — exiting for a clean restart:', err);
+  process.exit(1);
+});
+
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });

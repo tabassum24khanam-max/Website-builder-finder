@@ -40,8 +40,20 @@ router.post('/signup', async (req, res) => {
   if (q.getUserByEmail.get(email)) return res.status(409).json({ error: 'An account with that email already exists.' });
 
   const id = uuid();
+  // bcrypt.hash is the only await in this handler — a second request for the
+  // SAME email can (and, under any real concurrency, eventually will) pass
+  // the getUserByEmail check above before this one finishes hashing. Without
+  // this try/catch, the second insertUser.run() throws a synchronous SQLite
+  // UNIQUE-constraint error inside an async handler with nothing to catch
+  // it — Node treats that as an unhandled rejection and crashes the entire
+  // process, dropping every other connected user, not just these two requests.
   const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  q.insertUser.run({ id, email, password_hash });
+  try {
+    q.insertUser.run({ id, email, password_hash });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'An account with that email already exists.' });
+    return res.status(500).json({ error: 'Could not create the account.' });
+  }
   q.insertSubscription.run({ id: uuid(), user_id: id, tier: 'free', status: 'active' });
 
   req.session.regenerate((err) => {
@@ -68,8 +80,16 @@ router.post('/claim', async (req, res) => {
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   if (q.getUserByEmail.get(email)) return res.status(409).json({ error: 'An account with that email already exists.' });
 
+  // Same race as /signup (see its comment) — bcrypt.hash's await leaves a gap
+  // for two claims/signups racing on the same email to both pass the check
+  // above before either writes; catch it here instead of crashing the process.
   const password_hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-  q.updateUserCredentials.run({ id: currentUser.id, email, password_hash });
+  try {
+    q.updateUserCredentials.run({ id: currentUser.id, email, password_hash });
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) return res.status(409).json({ error: 'An account with that email already exists.' });
+    return res.status(500).json({ error: 'Could not save the account.' });
+  }
   res.json({ success: true, user: publicUser({ id: currentUser.id, email }) });
 });
 

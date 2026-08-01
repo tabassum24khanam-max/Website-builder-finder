@@ -905,6 +905,14 @@
     .page { padding: 64px 16px 60px; } /* top clearance for the fixed hamburger button */
     .page-header { flex-wrap: wrap; gap: 10px; }
     .page-header .export-row { width: 100%; }
+
+    /* Breathing room — category chips and the New Search form generally read
+       as cramped on a narrow screen at the same density as desktop. */
+    .chip { padding: 9px 15px; font-size: 13px; }
+    .chip-grid { gap: 10px; }
+    .panel { padding: 18px 16px; }
+    .more-options-toggle { font-size: 12.5px; line-height: 1.5; padding: 12px 14px; }
+    .form-row-3 { gap: 18px; }
   }
 
   /* Helpers */
@@ -1084,9 +1092,18 @@
   .mini-price-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
     padding: 22px; text-align: center; transition: transform 0.18s ease, box-shadow 0.18s ease;
+    position: relative;
   }
   .mini-price-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-card); }
-  .mini-price-card.popular { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset; }
+  /* A colored border here used to read as "this is selected" and clicking a
+     different card was expected to move it — it never did, since this is
+     just a static "most people pick this" recommendation, not selection
+     state. A small corner label says the same thing without that confusion. */
+  .mini-price-card .popular-badge {
+    position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    background: var(--amber); color: var(--bg); font-size: 10.5px; font-weight: 700;
+    letter-spacing: 0.4px; padding: 3px 10px; border-radius: 4px;
+  }
   .mini-price-card .plan-name { font-weight: 700; font-size: 14px; margin-bottom: 6px; }
   .mini-price-card .plan-price { font-family: var(--font-display); font-size: 28px; font-weight: 700; margin-bottom: 4px; }
   .mini-price-card .plan-price span { font-size: 12px; color: var(--text-dim); font-family: 'Inter'; }
@@ -1182,7 +1199,7 @@
   }
 
   .more-options-toggle {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: flex-start; gap: 8px;
     font-size: 13px; color: var(--amber); cursor: pointer; user-select: none;
     font-weight: 600; margin-bottom: 4px;
     padding: 10px 14px;
@@ -1190,7 +1207,12 @@
     transition: background 0.15s ease, border-color 0.15s ease;
   }
   .more-options-toggle:hover { background: var(--amber-glow); border-color: var(--amber); }
-  .more-options-toggle .arrow { transition: transform 0.2s ease; font-size: 11px; }
+  /* align-items was 'center', which vertically centers the arrow against the
+     WHOLE (possibly 2-3 line, on mobile) text sibling — the arrow ended up
+     floating next to the middle line instead of pinned to the top, reading
+     as a visual glitch rather than a leading icon. flex-start + this small
+     top nudge keeps it aligned with the first line of text at any width. */
+  .more-options-toggle .arrow { transition: transform 0.2s ease; font-size: 11px; margin-top: 2px; flex-shrink: 0; }
   .more-options-toggle.open .arrow { transform: rotate(90deg); }
   .more-options-panel {
     max-height: 0; overflow: hidden; transition: max-height 0.25s ease;
@@ -1302,7 +1324,8 @@
         <div class="plan-detail">5 searches, lifetime</div>
         <button class="btn btn-ghost" style="width:100%;" onclick="landingTryFree();return false;">Start free</button>
       </div>
-      <div class="mini-price-card popular">
+      <div class="mini-price-card">
+        <span class="popular-badge">POPULAR</span>
         <div class="plan-name">Starter</div>
         <div class="plan-price">$9<span>/mo</span></div>
         <div class="plan-detail">60 searches/month + 5 AI deep research/month</div>
@@ -1607,14 +1630,16 @@
           </div>
         </div>
 
-        <!-- Advanced location fields — collapsed by default so a first-time
-             visitor sees one clean "City / Area" box, not six inputs at once.
-             Autocomplete/GPS can still silently fill these while collapsed. -->
-        <div class="more-options-toggle" id="more-options-toggle" onclick="toggleMoreOptions()">
+        <!-- Advanced location fields — OPEN by default (country/zip/neighborhood/
+             paste-a-link are real, commonly-used fields, not rare edge cases —
+             hiding them by default just made people think they'd disappeared).
+             Collapsible for anyone who wants a shorter form once they know
+             what's here; the toggle button itself makes that obvious either way. -->
+        <div class="more-options-toggle open" id="more-options-toggle" onclick="toggleMoreOptions()">
           <span class="arrow">▸</span>
-          <span>📍 Add country, zip, neighborhood, or paste a map link/pin for a more precise search</span>
+          <span>📍 More location details — country, zip, neighborhood, or a pasted map link</span>
         </div>
-        <div class="more-options-panel" id="more-options-panel">
+        <div class="more-options-panel open" id="more-options-panel">
           <div class="form-row-3" style="margin-bottom:16px;margin-top:12px;">
             <div class="form-group">
               <label class="form-label">Country</label>
@@ -3946,7 +3971,11 @@ function renderLeadsMap() {
     const id = lead.id || lead._id;
     const name = lead.businessName || lead.name || 'Unknown';
     const marker = L.marker(coords, { icon }).addTo(leadsMapInstance);
-    marker.bindPopup(`<div style="font-family:system-ui;min-width:160px"><strong>${name}</strong><br><small>${lead.category||''}</small><br><span style="color:${color}">Score: ${score}/10</span>${lead.phone?`<br>📞 ${lead.phone}`:''}<br><button onclick="window.__openLead('${id}')" style="margin-top:6px;padding:3px 10px;background:#f0a500;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">View Details</button></div>`);
+    // name/category/phone are lead data — can originate from OSM, which
+    // anyone can edit anonymously — so they must be escaped exactly like
+    // every other lead field rendered elsewhere in this file. id is a
+    // server-generated UUID, never user-controlled, safe to interpolate.
+    marker.bindPopup(`<div style="font-family:system-ui;min-width:160px"><strong>${escHtml(name)}</strong><br><small>${escHtml(lead.category||'')}</small><br><span style="color:${color}">Score: ${score}/10</span>${lead.phone?`<br>📞 ${escHtml(lead.phone)}`:''}<br><button onclick="window.__openLead('${id}')" style="margin-top:6px;padding:3px 10px;background:#f0a500;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">View Details</button></div>`);
     leadsMapMarkers.push(marker);
     bounds.push(coords);
   });
@@ -4056,7 +4085,9 @@ function renderHistoryMap() {
     const id = lead.id || lead._id;
     const name = lead.businessName || lead.name || 'Unknown';
     const m = L.marker(coords, { icon }).addTo(hmMapInstance);
-    m.bindPopup(`<div style="font-family:system-ui"><strong>${name}</strong><br><span style="color:${color}">Score: ${score}/10</span><br><button onclick="window.__openLeadFromHM('${id}')" style="margin-top:4px;padding:2px 8px;background:#f0a500;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">View</button></div>`);
+    // Same escaping requirement as the All-Leads map popup above — name can
+    // originate from OSM, which is anonymously editable.
+    m.bindPopup(`<div style="font-family:system-ui"><strong>${escHtml(name)}</strong><br><span style="color:${color}">Score: ${score}/10</span><br><button onclick="window.__openLeadFromHM('${id}')" style="margin-top:4px;padding:2px 8px;background:#f0a500;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">View</button></div>`);
     hmMapMarkers.push(m);
     bounds.push(coords);
   });
@@ -4521,7 +4552,11 @@ const PRICING_CARDS = [
   {
     key: 'starter', label: 'Starter', tagline: 'For freelancers & small teams', price: '$9', suffix: '/mo',
     detail: '60 searches/month · resets each billing cycle',
-    badge: 'POPULAR', badgeBg: 'var(--amber)', accent: 'var(--amber)', border: 'var(--amber)', glow: '0 0 20px rgba(240,165,0,0.15)',
+    // Deliberately NOT a colored border/glow: a full-card amber outline read
+    // as "this one is selected" that should move when a different card is
+    // clicked (it never did — POPULAR is just a static recommendation, not
+    // selection state). The corner badge alone says the same thing unambiguously.
+    badge: 'POPULAR', badgeBg: 'var(--amber)', accent: 'var(--amber)', border: 'var(--border)', glow: '',
     features: [
       ['✓', '60 searches/month', true],
       ['✓', 'Business discovery & enrichment', true],
@@ -4624,7 +4659,12 @@ function renderPaypalButton(containerId, planId) {
   if (!el) return; // this tier isn't an upgrade from the caller's current one
   el.innerHTML = ''; // avoid stacking duplicate buttons if the panel is reopened
   paypal.Buttons({
-    createSubscription: (data, actions) => actions.subscription.create({ plan_id: planId }),
+    // custom_id ties this subscription to OUR user id at PayPal's end, at
+    // creation time — POST /api/billing/confirm checks it before ever
+    // linking a subscription to an account, so a subscriptionId alone
+    // (which is otherwise just a string anyone could send) can't be used
+    // to claim someone else's payment or hijack their subscription.
+    createSubscription: (data, actions) => actions.subscription.create({ plan_id: planId, custom_id: state.currentUser.id }),
     onApprove: async (data) => {
       const msgEl = document.getElementById('upgrade-msg');
       msgEl.textContent = 'Confirming…';

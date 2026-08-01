@@ -36,13 +36,22 @@ function stopSearch(searchId) {
 // clicking Stop is honored even while the (uninterruptible) Places/Serper/OSM
 // network calls are still in flight — the abandoned call's result is just
 // discarded when it eventually resolves, checked via shouldStop() again below.
+//
+// The returned promise carries a .cancel() the caller MUST call once the
+// race is over, win or lose: a search that finishes normally (the common
+// case — most searches are never stopped) means shouldStop() never becomes
+// true, so the setInterval below would otherwise poll every 200ms FOREVER —
+// one permanently-live timer leaked per search, for the life of the process.
 function waitForStop(shouldStop, intervalMs = 200) {
-  return new Promise(resolve => {
-    const timer = setInterval(() => {
+  let timer;
+  const promise = new Promise(resolve => {
+    timer = setInterval(() => {
       if (shouldStop()) { clearInterval(timer); resolve(true); }
     }, intervalMs);
     if (timer.unref) timer.unref();
   });
+  promise.cancel = () => clearInterval(timer); // safe to call even if already cleared
+  return promise;
 }
 
 async function runSearch(searchConfig, broadcast) {
@@ -66,10 +75,16 @@ async function runSearch(searchConfig, broadcast) {
   let leadsFound = 0;
 
   try {
-    const businesses = await Promise.race([
-      discover({ category, city: cityLabel, neighborhood, zip, country, lat, lng, radius_km, limit_count, log, excludeNames, shouldStop }),
-      waitForStop(shouldStop).then(() => null), // null = "gave up waiting", not "found zero"
-    ]);
+    const stopWatcher = waitForStop(shouldStop);
+    let businesses;
+    try {
+      businesses = await Promise.race([
+        discover({ category, city: cityLabel, neighborhood, zip, country, lat, lng, radius_km, limit_count, log, excludeNames, shouldStop }),
+        stopWatcher.then(() => null), // null = "gave up waiting", not "found zero"
+      ]);
+    } finally {
+      stopWatcher.cancel(); // must run whether the race resolved OR discover() threw
+    }
 
     if (businesses === null || shouldStop()) { markStopped(0); return; }
 

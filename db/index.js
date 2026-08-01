@@ -129,6 +129,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_contacts_created ON contacts(created_at DESC);
 `);
 
+// Defense in depth against a real billing bug: without this, nothing stopped
+// the same PayPal subscription id from being written onto more than one
+// user's row (one payment upgrading unlimited accounts, or letting anyone
+// who learns a subscription id cancel a stranger's real subscription). The
+// real fix is routes/billing.js checking PayPal's own custom_id before ever
+// writing this column — this index just makes it structurally impossible
+// for that check to be bypassed by a future bug. Partial (WHERE ... NOT
+// NULL) because every free-tier row legitimately has this column NULL.
+try {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_paypal_id ON subscriptions(paypal_subscription_id) WHERE paypal_subscription_id IS NOT NULL');
+} catch (e) {
+  console.error('  ⚠️  Could not create idx_subscriptions_paypal_id — duplicate paypal_subscription_id values already exist in the DB:', e.message);
+}
+
 const q = {
   insertUser:     db.prepare('INSERT INTO users (id, email, password_hash) VALUES (@id, @email, @password_hash)'),
   getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),

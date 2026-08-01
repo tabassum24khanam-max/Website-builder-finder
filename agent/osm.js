@@ -55,7 +55,7 @@ async function geocode(query) {
   // accept-language=en gives consistent English place names (vital for building
   // clean Serper queries from a geocoded area, e.g. a Saudi zip → "Al Rawdah").
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1&accept-language=en`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'LeadHunter/2.0 (lead-discovery)', 'Accept-Language': 'en' } });
+  const res = await fetch(url, { headers: { 'User-Agent': 'LeadHunter/2.0 (lead-discovery)', 'Accept-Language': 'en' }, signal: AbortSignal.timeout(8000) });
   if (!res.ok) return null;
   const data = await res.json();
   if (!data.length) return null;
@@ -139,6 +139,16 @@ async function overpassQuery(query) {
         body: 'data=' + encodeURIComponent(query),
         // Overpass returns 406 without a UA
         headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'LeadHunter/2.0 (lead-discovery)' },
+        // The query string's own [timeout:40] only bounds Overpass's server-side
+        // processing — if the connection itself stalls (documented flaky
+        // behavior of these free public mirrors), fetch() has no client-side
+        // limit on its own and can hang far longer. findBusinessesOSM tries up
+        // to 3 radii x 2 passes here, each looping all 3 endpoints below — with
+        // no timeout that's ~18 unbounded attempts in the worst case, which is
+        // exactly the "stuck for 25 minutes" failure mode this app has hit
+        // before (see HANDOFF.md). 20s keeps each attempt bounded while still
+        // giving a real (often slow) Overpass mirror room to answer.
+        signal: AbortSignal.timeout(20000),
       });
       if (res.ok) return await res.json();
       lastErr = new Error(`HTTP ${res.status} from ${endpoint}`);
